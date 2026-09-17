@@ -1,10 +1,10 @@
 import { Trajectory } from "./Trajectory";
-import { Fluent, FluentId } from "./Fluent";
+import { Dimension, DimensionId } from "./Dimension";
 import { ValueClustering } from "./ValueClustering";
 
 export type Workspace = {
     trajectories?: Trajectory[];
-    fluents?: Fluent[];
+    dimensions?: Dimension[];
     valueClusterings?: ValueClustering[];
     prevValueClusterings?: ValueClustering[];
     settings?: WorkspaceSetting;
@@ -14,7 +14,7 @@ export type WorkspaceSetting = {
     nodePosition?: { [key: string]: { x: number; y: number } };
     viewport?: { x: number; y: number; zoom: number };
     timelineView?: {
-      [fluentId: FluentId]: {
+      [dimensionId: DimensionId]: {
         enabled: boolean;
       };
     };
