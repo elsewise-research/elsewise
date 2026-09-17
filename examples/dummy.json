@@ -1,0 +1,39 @@
+{
+    "trajectories": [
+        {
+            "id": "traj-1",
+            "rounds": [
+                {
+                    "id": "round-1",
+                    "summary": "User asks for directions and the agent looks up a route.",
+                    "turns": [
+                        {
+                            "type": "message",
+                            "subject": "user",
+                            "content": {
+                                "content": "How do I get to the train station from here?"
+                            }
+                        },
+                        {
+                            "type": "action",
+                            "subject": "agent",
+                            "content": {
+                                "actionName": "lookupRoute",
+                                "actionArgs": {
+                                    "destination": "train station"
+                                }
+                            }
+                        },
+                        {
+                            "type": "message",
+                            "subject": "agent",
+                            "content": {
+                                "content": "Head north on Main St for two blocks, then turn right onto 5th Ave."
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
