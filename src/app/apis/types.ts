@@ -12,3 +12,13 @@ export type ExtractDimensionOutputType = {
     dimensions : Dimension[];
     valueClusterings : ValueClustering[];
 };
+
+export type DimensionValueClusterInputType = {
+    trajectories : Trajectory[];
+    dimensions: Dimension[];
+    domainDescription? : string;
+};
+
+export type DimensionValueClusterOutputType = {
+    valueClusterings : ValueClustering[];
+};
