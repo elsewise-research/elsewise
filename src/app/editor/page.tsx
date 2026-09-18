@@ -16,7 +16,11 @@ export default function Home() {
         { trajectories: workspace.trajectories },
       );
 
-      const updatedWorkspace: Workspace = { ...workspace, dimensions: result.dimensions };
+      const updatedWorkspace: Workspace = {
+        ...workspace,
+        dimensions: result.dimensions,
+        valueClusterings: result.valueClusterings,
+      };
       setWorkspace(updatedWorkspace);
       saveWorkspace(updatedWorkspace);
     };
