@@ -2,11 +2,11 @@
     "trajectories": [
         {
             "id": "traj-1",
-            "rounds": [
+            "turns": [
                 {
-                    "id": "round-1",
+                    "id": "turn-1",
                     "summary": "User asks for directions and the agent looks up a route.",
-                    "turns": [
+                    "steps": [
                         {
                             "type": "message",
                             "subject": "user",
