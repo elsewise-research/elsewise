@@ -3,6 +3,7 @@ import { Dimension, DimensionId } from "./Dimension";
 import { ValueClustering } from "./ValueClustering";
 
 export type Workspace = {
+    domainDescription?: string;
     trajectories?: Trajectory[];
     dimensions?: Dimension[];
     valueClusterings?: ValueClustering[];

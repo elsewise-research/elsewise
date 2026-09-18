@@ -5,6 +5,7 @@ import { ValueClustering } from "@/models/ValueClustering";
 export type ExtractDimensionInputType = {
     trajectories : Trajectory[];
     numDimensions? : number;
+    domainDescription? : string;
 };
 
 export type ExtractDimensionOutputType = {

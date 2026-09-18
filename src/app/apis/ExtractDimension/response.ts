@@ -10,7 +10,7 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
 
     try {
     
-    const {trajectories, numDimensions = 3} = input
+    const {trajectories, numDimensions = 3, domainDescription} = input
 
     const text = await callAnthropicAPI(
         getSystemPrompt(),
@@ -22,7 +22,8 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
                 type: 'text' as const,
                 text: getPrompt({
                     trajectories,
-                    numDimensions
+                    numDimensions,
+                    domainDescription
                 }),
               },
             ],

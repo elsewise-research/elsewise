@@ -13,7 +13,7 @@ export default function Home() {
 
       const result = await callApi<ExtractDimensionInputType, ExtractDimensionOutputType>(
         "/apis/ExtractDimension",
-        { trajectories: workspace.trajectories },
+        { trajectories: workspace.trajectories, domainDescription: workspace.domainDescription },
       );
 
       const updatedWorkspace: Workspace = {
