@@ -1,7 +1,10 @@
+import { randomUUID } from 'crypto';
 import { ExtractDimensionInputType, ExtractDimensionOutputType } from '../types';
 import { callAnthropicAPI } from '../LLM';
 import { getPrompt, getSystemPrompt } from './prompt';
 import { Dimension } from '@/models/Dimension';
+import { ValueClustering, TrajectoryMoment } from '@/models/ValueClustering';
+import { safeJsonParse } from '@/utils/jsonParser';
 
 export async function extractDimension(input: ExtractDimensionInputType): Promise<ExtractDimensionOutputType> {
 
@@ -26,12 +29,25 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
           },
         ]
       );
-    
-    const dimensions = JSON.parse(text) as Dimension[];
+
+    console.log("Extract dimension raw result:", text);
+
+    const rawDimensions = safeJsonParse<Dimension[]>(text, 'dimensions') ?? [];
+    const dimensions: Dimension[] = rawDimensions.map((dimension) => ({
+        ...dimension,
+        id: randomUUID(),
+    }));
+
+    const valueClusterings: ValueClustering[] = dimensions.map((dimension) => ({
+        dimensionIds: [dimension.id],
+        valueMapping: Object.fromEntries(
+            dimension.values.map((value): [string, TrajectoryMoment[]] => [value, []]),
+        ),
+    }));
 
     return {
         dimensions,
-        valueClusterings: []
+        valueClusterings
     };
 
     } catch (error) {
