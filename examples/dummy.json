@@ -34,6 +34,126 @@
                     ]
                 }
             ]
+        },
+        {
+            "id": "traj-2",
+            "turns": [
+                {
+                    "id": "turn-1",
+                    "summary": "User asks for a restaurant recommendation and the agent searches nearby options.",
+                    "steps": [
+                        {
+                            "type": "message",
+                            "subject": "user",
+                            "content": {
+                                "content": "I'm starving, is there a good pizza place nearby?"
+                            }
+                        },
+                        {
+                            "type": "action",
+                            "subject": "agent",
+                            "content": {
+                                "actionName": "searchRestaurants",
+                                "actionArgs": {
+                                    "cuisine": "pizza",
+                                    "radiusMiles": 1
+                                }
+                            }
+                        },
+                        {
+                            "type": "message",
+                            "subject": "agent",
+                            "content": {
+                                "content": "Tony's Pizzeria is a 5 minute walk away and has great reviews."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "turn-2",
+                    "summary": "User asks whether the restaurant is currently open.",
+                    "steps": [
+                        {
+                            "type": "message",
+                            "subject": "user",
+                            "content": {
+                                "content": "Is it open right now? It's pretty late."
+                            }
+                        },
+                        {
+                            "type": "action",
+                            "subject": "agent",
+                            "content": {
+                                "actionName": "checkBusinessHours",
+                                "actionArgs": {
+                                    "business": "Tony's Pizzeria"
+                                }
+                            }
+                        },
+                        {
+                            "type": "message",
+                            "subject": "agent",
+                            "content": {
+                                "content": "Yes, it's open until midnight, so you have plenty of time."
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "traj-3",
+            "turns": [
+                {
+                    "id": "turn-1",
+                    "summary": "User asks about the weather before a bike commute and the agent checks the forecast.",
+                    "steps": [
+                        {
+                            "type": "message",
+                            "subject": "user",
+                            "content": {
+                                "content": "Should I bike to work today or take the bus?"
+                            }
+                        },
+                        {
+                            "type": "action",
+                            "subject": "agent",
+                            "content": {
+                                "actionName": "getWeatherForecast",
+                                "actionArgs": {
+                                    "location": "current",
+                                    "hours": 2
+                                }
+                            }
+                        },
+                        {
+                            "type": "message",
+                            "subject": "agent",
+                            "content": {
+                                "content": "It's supposed to rain heavily in the next hour, so the bus is a safer bet today."
+                            }
+                        },
+                        {
+                            "type": "action",
+                            "subject": "agent",
+                            "content": {
+                                "actionName": "lookupTransitSchedule",
+                                "actionArgs": {
+                                    "mode": "bus",
+                                    "destination": "work"
+                                }
+                            }
+                        },
+                        {
+                            "type": "message",
+                            "subject": "agent",
+                            "content": {
+                                "content": "The next bus toward downtown leaves in 8 minutes from the stop on Elm St."
+                            }
+                        }
+                    ]
+                }
+            ]
         }
     ]
 }
