@@ -1,20 +1,20 @@
 // Todo: multimodal content support
 
 export type TrajectoryId = string;
-export type RoundId = string;
+export type TurnId = string;
 
 export type Trajectory = {
     id: TrajectoryId;
-    rounds: Round[];
+    turns: Turn[];
 };
 
-export type Round = {
-    id: RoundId;
-    turns: Turn[];
+export type Turn = {
+    id: TurnId;
+    steps: Step[];
     summary: string;
 };
 
-export type Turn =
+export type Step =
   | { type: "message"; subject: string; content: Message }
   | { type: "action"; subject: string; content: Action };
 

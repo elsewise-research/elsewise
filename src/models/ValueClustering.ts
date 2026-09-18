@@ -1,5 +1,5 @@
 import { DimensionId } from "./Dimension";
-import { TrajectoryId, RoundId } from "./Trajectory";
+import { TrajectoryId, TurnId } from "./Trajectory";
 
 // Dimension value separator
 export const DIMENSION_VALUE_SEPARATOR = "_";
@@ -11,5 +11,5 @@ export type ValueClustering = {
 
 export type TrajectoryMoment = {
     trajectoryId: TrajectoryId;
-    roundId: RoundId;
+    turnId: TurnId;
 }
