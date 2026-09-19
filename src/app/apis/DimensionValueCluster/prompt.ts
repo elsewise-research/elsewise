@@ -30,7 +30,7 @@ export function getPrompt({
     For each turn, determine the value of each of the following variables. Each variable's value must be one of its listed possible values.
     ${JSON.stringify(dimensionDescriptions)}
     The value should be a truthful description of the state of the domain of the story at the moment of the turn.
-    Output a json list with entries corresponding to each turn, each with keys "turnId" and "values". "values" should be an object mapping each variable's "id" to its determined value for that turn.
+    Output a json list with entries corresponding to each turn, each with keys "trajectoryId", "turnId" and "values". "trajectoryId" and "turnId" must exactly match the "id" of the trajectory and the "id" of the turn as given in the attached json below. "values" should be an object mapping each variable's "id" to its determined value for that turn.
     Return only the json with no explanation.
     ${JSON.stringify(trajectorySummaries)}
     `;

@@ -5,6 +5,7 @@ import { ValueClustering, TrajectoryMoment } from '@/models/ValueClustering';
 import { safeJsonParse } from '@/utils/jsonParser';
 
 type TurnValueAssignment = {
+    trajectoryId: string;
     turnId: string;
     values: Record<string, string>;
 };
@@ -38,20 +39,19 @@ export async function dimensionValueCluster(input: DimensionValueClusterInputTyp
 
     const assignments = safeJsonParse<TurnValueAssignment[]>(text, 'valueAssignments') ?? [];
 
-    const trajectoryIdByTurnId = new Map<string, string>();
+    const knownTurnKeys = new Set<string>();
     for (const trajectory of trajectories) {
         for (const turn of trajectory.turns) {
-            trajectoryIdByTurnId.set(turn.id, trajectory.id);
+            knownTurnKeys.add(`${trajectory.id}::${turn.id}`);
         }
     }
 
     const valueClusterings: ValueClustering[] = dimensions.map((dimension) => {
         const valueMapping: Record<string, TrajectoryMoment[]> = {};
 
-        for (const {turnId, values} of assignments) {
+        for (const {trajectoryId, turnId, values} of assignments) {
             const value = values[dimension.id];
-            const trajectoryId = trajectoryIdByTurnId.get(turnId);
-            if (!value || !trajectoryId) continue;
+            if (!value || !knownTurnKeys.has(`${trajectoryId}::${turnId}`)) continue;
 
             if (!valueMapping[value]) {
                 valueMapping[value] = [];
