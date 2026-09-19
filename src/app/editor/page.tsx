@@ -1,11 +1,22 @@
 'use client';
 import { useEffect, useState } from "react";
+import { ReactFlow, ReactFlowProvider } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { Workspace } from "@/models/Workspace";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
 import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
+import styles from "./editor.module.css";
 
 export default function Home() {
+    return (
+      <ReactFlowProvider>
+        <Editor />
+      </ReactFlowProvider>
+    );
+}
+
+function Editor() {
     const [workspace, setWorkspace] = useState<Workspace | null>(null);
 
     const handleExtractDimension = async () => {
@@ -71,6 +82,9 @@ export default function Home() {
             <button onClick={() => {handleDownloadWorkspace()}}>download current workspace</button>
           </div>
           <pre>{JSON.stringify(workspace, null, 2)}</pre>
+          <div className={styles.canvas}>
+            <ReactFlow nodes={[]} edges={[]} />
+          </div>
         </div>
       </>
     );

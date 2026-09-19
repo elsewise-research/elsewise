@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { Workspace } from "@/models/Workspace";
 import { saveWorkspace } from "@/utils/workspaceStorage";
+import { ensureTrajectoryColors } from "@/utils/trajectory";
 
 function WorkspaceSetupView({}) {
     const [trajectoryFile, setTrajectoryFile] = useState<File | null>(null);
@@ -25,9 +26,9 @@ function WorkspaceSetupView({}) {
           const text = await trajectoryFile.text();
           const json = JSON.parse(text);
 
-          const workspace: Workspace = {
+          const workspace: Workspace = ensureTrajectoryColors({
             trajectories: json.trajectories,
-          };
+          });
 
           saveWorkspace(workspace);
 
@@ -54,7 +55,7 @@ function WorkspaceSetupView({}) {
         setError("");
         try {
           const text = await workspaceFile.text();
-          const workspace: Workspace = JSON.parse(text);
+          const workspace: Workspace = ensureTrajectoryColors(JSON.parse(text));
 
           saveWorkspace(workspace);
 

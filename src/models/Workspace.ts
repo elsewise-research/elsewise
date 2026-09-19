@@ -13,6 +13,7 @@ export type Workspace = {
 };
 
 export type WorkspaceSetting = {
+    trajectoryColors? : {[trajactoryId: string]: {color: string}};
     nodePosition?: { [key: string]: { x: number; y: number } };
     viewport?: { x: number; y: number; zoom: number };
     timelineView?: {

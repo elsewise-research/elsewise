@@ -1,0 +1,44 @@
+.bsv-node {
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: white;
+    font-size: 12px;
+}
+
+.bsv-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.bsv-table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.bsv-table th,
+.bsv-table td {
+    border: 1px solid #ddd;
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.bsv-moments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.trajectory-moment-markor {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: default;
+}
