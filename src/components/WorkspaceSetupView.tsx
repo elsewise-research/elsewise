@@ -4,24 +4,25 @@ import { Workspace } from "@/models/Workspace";
 import { saveWorkspace } from "@/utils/workspaceStorage";
 
 function WorkspaceSetupView({}) {
-    const [file, setFile] = useState<File | null>(null);
+    const [trajectoryFile, setTrajectoryFile] = useState<File | null>(null);
+    const [workspaceFile, setWorkspaceFile] = useState<File | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFile(e.target.files?.[0] ?? null);
+    const handleTrajectoriesFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setTrajectoryFile(e.target.files?.[0] ?? null);
         setError("");
       };
     
-    const handleUpload = async () => {
-        if (!file) {
+    const handleUploadTrajectories = async () => {
+        if (!trajectoryFile) {
           setError("Please select a file.");
           return;
         }
         setLoading(true);
         setError("");
         try {
-          const text = await file.text();
+          const text = await trajectoryFile.text();
           const json = JSON.parse(text);
 
           const workspace: Workspace = {
@@ -39,14 +40,51 @@ function WorkspaceSetupView({}) {
         setLoading(false);
     };
 
+    const handleWorkspaceFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setWorkspaceFile(e.target.files?.[0] ?? null);
+        setError("");
+      };
+
+    const handleUploadWorkspace = async () => {
+        if (!workspaceFile) {
+          setError("Please select a file.");
+          return;
+        }
+        setLoading(true);
+        setError("");
+        try {
+          const text = await workspaceFile.text();
+          const workspace: Workspace = JSON.parse(text);
+
+          saveWorkspace(workspace);
+
+          // Nevigate to main editor view now that the workspace is restored
+          window.location.href = "/editor";
+
+        } catch (err) {
+          setError("Error: " + (err instanceof Error ? err.message : String(err)));
+        }
+        setLoading(false);
+    };
+
     return (
-      <div>
-        <input type="file" accept="application/json" onChange={handleFileChange} />
-        <button onClick={handleUpload} disabled={!file || loading}>
-          {loading ? "Uploading..." : "Upload"}
-        </button>
-        {error && <p>{error}</p>}
-      </div>
+      <>
+        <div>
+          <h1>Create New Workspace from Trajectories</h1>
+          <input type="file" accept="application/json" onChange={handleTrajectoriesFileChange} />
+          <button onClick={handleUploadTrajectories} disabled={!trajectoryFile || loading}>
+            {loading ? "Uploading..." : "Upload"}
+          </button>
+        </div>
+        <div>
+          <h1>Restore Existing Workspace</h1>
+          <input type="file" accept="application/json" onChange={handleWorkspaceFileChange} />
+          <button onClick={handleUploadWorkspace} disabled={!workspaceFile || loading}>
+            {loading ? "Uploading..." : "Upload"}
+          </button>
+        </div>
+        <div> {error && <p>{error}</p>}</div>
+      </>
     );
 }
 
