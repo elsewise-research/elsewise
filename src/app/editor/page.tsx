@@ -1,12 +1,15 @@
 'use client';
 import { useEffect, useState } from "react";
-import { ReactFlow, ReactFlowProvider } from "@xyflow/react";
+import { ReactFlow, ReactFlowProvider, type Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Workspace } from "@/models/Workspace";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
 import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
+import SimpleBSV from "@/components/SimpleBSV";
 import styles from "./editor.module.css";
+
+const nodeTypes = { simpleBSV: SimpleBSV };
 
 export default function Home() {
     return (
@@ -73,6 +76,28 @@ function Editor() {
       setWorkspace(loadWorkspace());
     }, []);
 
+    const trajectoryColorSetting: Record<string, string> = Object.fromEntries(
+      Object.entries(workspace?.settings?.trajectoryColors ?? {}).map(([trajectoryId, { color }]) => [trajectoryId, color]),
+    );
+
+    const nodes: Node[] = (workspace?.valueClusterings ?? [])
+      .filter((valueClustering) => valueClustering.dimensionIds.length === 1)
+      .map((valueClustering, index) => {
+        const dimensionId = valueClustering.dimensionIds[0];
+        const savedPosition = workspace?.settings?.nodePosition?.[dimensionId];
+
+        return {
+          id: dimensionId,
+          type: "simpleBSV",
+          position: savedPosition ?? { x: index * 320, y: 0 },
+          data: {
+            trajectories: workspace?.trajectories ?? [],
+            valueClustering,
+            trajectoryColorSetting,
+          },
+        };
+      });
+
     return (
       <>
         <div>
@@ -83,7 +108,7 @@ function Editor() {
           </div>
           <pre>{JSON.stringify(workspace, null, 2)}</pre>
           <div className={styles.canvas}>
-            <ReactFlow nodes={[]} edges={[]} />
+            <ReactFlow nodes={nodes} edges={[]} nodeTypes={nodeTypes} />
           </div>
         </div>
       </>
