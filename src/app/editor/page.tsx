@@ -42,6 +42,22 @@ export default function Home() {
       saveWorkspace(updatedWorkspace);
     };
 
+    const handleDownloadWorkspace = () => {
+      if (!workspace) return;
+
+      const blob = new Blob([JSON.stringify(workspace, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${workspace.title || "untitled_workspace"}_${timestamp}.json`;
+      link.click();
+
+      URL.revokeObjectURL(url);
+    }
+
     useEffect(() => {
       setWorkspace(loadWorkspace());
     }, []);
@@ -52,6 +68,7 @@ export default function Home() {
           <div>
             <button onClick={() => {handleExtractDimension()}}>extract a dimension</button>
             <button onClick={() => {handleDimensionValueCluster()}}>cluster dimension values</button>
+            <button onClick={() => {handleDownloadWorkspace()}}>download current workspace</button>
           </div>
           <pre>{JSON.stringify(workspace, null, 2)}</pre>
         </div>
