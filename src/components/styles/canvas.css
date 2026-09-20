@@ -9,6 +9,15 @@
     max-width: 400px;
 }
 
+.bsv-title,
+.bsv-description {
+    /* Prevent this element's own text from contributing to .bsv-node's
+       shrink-to-fit width — the node's width should track .bsv-viz alone. */
+    width: 0;
+    min-width: 100%;
+    box-sizing: border-box;
+}
+
 .bsv-title {
     color: #777;
     font-weight: bold;
