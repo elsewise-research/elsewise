@@ -2,7 +2,7 @@ import { DimensionId } from "./Dimension";
 import { TrajectoryId, TurnId } from "./Trajectory";
 
 // Dimension value separator
-export const DIMENSION_VALUE_SEPARATOR = "_";
+export const DIMENSION_VALUE_SEPARATOR = "%";
 
 export type ValueClustering = {
     dimensionIds: DimensionId[];

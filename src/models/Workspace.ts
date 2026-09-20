@@ -21,4 +21,9 @@ export type WorkspaceSetting = {
         enabled: boolean;
       };
     };
+    matrixView?: {
+      [dimensionIdsKey: string]: {
+        enabled: boolean;
+      };
+    };
 };

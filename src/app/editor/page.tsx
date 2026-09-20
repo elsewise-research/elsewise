@@ -15,10 +15,11 @@ import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
 import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
 import SimpleBSV from "@/components/SimpleBSV";
+import CompositionalBSV from "@/components/CompositionalBSV";
 import icon from "@/app/icon.png";
 import styles from "./editor.module.css";
 
-const nodeTypes = { simpleBSV: SimpleBSV };
+const nodeTypes = { simpleBSV: SimpleBSV, compositionalBSV: CompositionalBSV };
 
 export default function Home() {
     return (
@@ -137,6 +138,25 @@ function Editor() {
       });
     };
 
+    const handleToggleMatrixView = (dimensionIdsKey: string) => {
+      setWorkspace((prev) => {
+        if (!prev) return prev;
+
+        const currentlyEnabled = prev.settings?.matrixView?.[dimensionIdsKey]?.enabled ?? false;
+        const matrixView = {
+          ...prev.settings?.matrixView,
+          [dimensionIdsKey]: { enabled: !currentlyEnabled },
+        };
+
+        const updatedWorkspace: Workspace = {
+          ...prev,
+          settings: { ...prev.settings, matrixView },
+        };
+        saveWorkspace(updatedWorkspace);
+        return updatedWorkspace;
+      });
+    };
+
     const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type !== "simpleBSV") {
         setDropTargetId(null);
@@ -217,30 +237,55 @@ function Editor() {
     }, []);
 
     useEffect(() => {
-      setNodes(
-        (workspace?.valueClusterings ?? [])
-          .filter((valueClustering) => valueClustering.dimensionIds.length === 1)
-          .map((valueClustering, index) => {
-            const dimensionId = valueClustering.dimensionIds[0];
-            const savedPosition = workspace?.settings?.nodePosition?.[dimensionId];
-            const dimension = workspace?.dimensions?.find((dimension) => dimension.id === dimensionId);
+      const simpleNodes = (workspace?.valueClusterings ?? [])
+        .filter((valueClustering) => valueClustering.dimensionIds.length === 1)
+        .map((valueClustering, index) => {
+          const dimensionId = valueClustering.dimensionIds[0];
+          const savedPosition = workspace?.settings?.nodePosition?.[dimensionId];
+          const dimension = workspace?.dimensions?.find((dimension) => dimension.id === dimensionId);
 
-            return {
-              id: dimensionId,
-              type: "simpleBSV",
-              position: savedPosition ?? { x: index * 400, y: 0 },
-              data: {
-                dimensionName: dimension?.name ?? dimensionId,
-                dimensionDescription: dimension?.description ?? "",
-                trajectories: workspace?.trajectories ?? [],
-                valueClustering,
-                trajectoryColorSetting,
-                compactView: workspace?.settings?.compactView?.[dimensionId]?.enabled ?? true,
-                onToggleCompactView: () => handleToggleCompactView(dimensionId),
-              },
-            };
-          }),
-      );
+          return {
+            id: dimensionId,
+            type: "simpleBSV",
+            position: savedPosition ?? { x: index * 400, y: 0 },
+            data: {
+              dimensionName: dimension?.name ?? dimensionId,
+              dimensionDescription: dimension?.description ?? "",
+              trajectories: workspace?.trajectories ?? [],
+              valueClustering,
+              trajectoryColorSetting,
+              compactView: workspace?.settings?.compactView?.[dimensionId]?.enabled ?? true,
+              onToggleCompactView: () => handleToggleCompactView(dimensionId),
+            },
+          };
+        });
+
+      const compositionalNodes = (workspace?.valueClusterings ?? [])
+        .filter((valueClustering) => valueClustering.dimensionIds.length > 1)
+        .map((valueClustering, index) => {
+          const dimensionIdsKey = valueClustering.dimensionIds.join("|");
+          const savedPosition = workspace?.settings?.nodePosition?.[dimensionIdsKey];
+          const dimensions = valueClustering.dimensionIds.map(
+            (dimensionId) => workspace?.dimensions?.find((dimension) => dimension.id === dimensionId),
+          );
+
+          return {
+            id: dimensionIdsKey,
+            type: "compositionalBSV",
+            position: savedPosition ?? { x: index * 400, y: 500 },
+            data: {
+              dimensionNames: dimensions.map((dimension, i) => dimension?.name ?? valueClustering.dimensionIds[i]),
+              dimensionDescriptions: dimensions.map((dimension) => dimension?.description ?? ""),
+              trajectories: workspace?.trajectories ?? [],
+              valueClustering,
+              trajectoryColorSetting,
+              matrixView: workspace?.settings?.matrixView?.[dimensionIdsKey]?.enabled ?? true,
+              onToggleMatrixView: () => handleToggleMatrixView(dimensionIdsKey),
+            },
+          };
+        });
+
+      setNodes([...simpleNodes, ...compositionalNodes]);
     }, [workspace, trajectoryColorSetting]);
 
     useEffect(() => {
