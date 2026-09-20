@@ -5,22 +5,24 @@ import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
 import "./styles/canvas.css"
 
 type simpleBSVData = {
+    dimensionName : string;
+    dimensionDescription : string;
     trajectories : Trajectory[];
     valueClustering : ValueClustering;
     trajectoryColorSetting : Record<string, string>;
+    compactView : boolean;
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
 
 export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
-    const {trajectories, valueClustering, trajectoryColorSetting} = data;
+    const {dimensionName, dimensionDescription, trajectories, valueClustering, trajectoryColorSetting} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
         throw new Error(
             `SimpleBSV expects valueClustering.dimensionIds to contain exactly one element, got ${valueClustering.dimensionIds.length}`
         );
     }
-    const dimensionId = valueClustering.dimensionIds[0];
 
     const turnOrderByTrajectory = new Map<string, Map<string, number>>();
     for (const trajectory of trajectories) {
@@ -36,19 +38,21 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
 
     return (
         <div className="bsv-node">
-            <div className="bsv-title">{dimensionId}</div>
+            <div className="bsv-title">{dimensionName}</div>
+            <div className="bsv-description">{dimensionDescription}</div>
             <table className="bsv-table">
                 <thead>
-                    <tr>
+                    {/*<tr>
                         <th>Value</th>
                         <th>Trajectory Moments</th>
-                    </tr>
+                    </tr>*/}
                 </thead>
                 <tbody>
                     {Object.entries(valueClustering.valueMapping).map(([value, moments]) => (
                         <tr key={value}>
-                            <td>{value}</td>
-                            <td className="bsv-moments">
+                            <td className="bsv-value-clustering">
+                            <p>{value}</p>
+                            <div className="bsv-moments">
                                 {moments.map((moment) => (
                                     <span
                                         key={`${moment.trajectoryId}-${moment.turnId}`}
@@ -59,6 +63,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                                         {getTurnOrder(moment)}
                                     </span>
                                 ))}
+                            </div>
                             </td>
                         </tr>
                     ))}

@@ -4,10 +4,19 @@
     border-radius: 8px;
     background: white;
     font-size: 12px;
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.10);
+    min-width: 200px;
+    max-width: 400px;
 }
 
 .bsv-title {
-    font-weight: 600;
+    color: #777;
+    font-weight: bold;
+}
+
+.bsv-description {
+    color: #aaa;
+    font-style: italic;
     margin-bottom: 8px;
 }
 
@@ -17,11 +26,22 @@
 }
 
 .bsv-table th,
+
 .bsv-table td {
-    border: 1px solid #ddd;
+    color: #777;
+    border: none;
     padding: 4px 8px;
+    margin: 5px;
     text-align: left;
     vertical-align: middle;
+    background-color: #eee;
+    border-radius: 10px;
+}
+
+.bsv-value-clustering {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
 }
 
 .bsv-moments {

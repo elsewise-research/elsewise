@@ -1,3 +1,66 @@
+.root {
+    width: 100vw;
+    height: 100vh;
+    background: #f7f9fb;
+    position: "relative";
+  }
+
 .canvas {
-    height: 600px;
+    height: 100vh;
 }
+
+.header {
+    background-color: #fff;
+    color: #777;
+    padding: 10px;
+    z-index: 10;
+    position: absolute;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 15px;
+    top: 0;
+    left: 0;
+    right: 0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.logo {
+    width: 42px;
+    height: 42px;
+    border-radius: 8px;
+}
+
+.header h1 {
+    font-size: 20px;
+    font-weight: bold;
+    /* text-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);*/
+}
+
+.header-toolbar {
+    margin-left: auto;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+}
+
+.header-toolbar button {
+    border-color: #777;
+    border-style: solid;
+    border-width: 1px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.header-toolbar button:hover {
+    background: #ccc;
+    color: #fff;
+}
+
