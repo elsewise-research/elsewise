@@ -12,7 +12,7 @@
 
 .bsv-node--drop-target {
     background: #efefef;
-    border: 1px dashed #ccc;
+    border: 2px dashed #ccc;
 }
 
 .bsv-title,
