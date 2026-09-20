@@ -1,4 +1,5 @@
 .bsv-node {
+    position: relative;
     padding: 12px;
     border: 1px solid #ccc;
     border-radius: 8px;
@@ -7,6 +8,11 @@
     box-shadow: 0 2px 2px rgba(0, 0, 0, 0.10);
     min-width: 200px;
     max-width: 400px;
+}
+
+.bsv-node--drop-target {
+    background: #efefef;
+    border: 1px dashed #ccc;
 }
 
 .bsv-title,
@@ -70,4 +76,15 @@
     font-size: 10px;
     font-weight: 600;
     cursor: default;
+}
+
+.bsv-toolkit {
+    color: #777;
+    position: absolute;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 15px;
+    right: 0;
+    margin-right: 8px;
 }
