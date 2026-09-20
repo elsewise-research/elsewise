@@ -4,11 +4,13 @@ import Image from "next/image";
 import { ReactFlow,
   ReactFlowProvider,
   applyNodeChanges,
+  useReactFlow,
   type Node,
   type NodeChange } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Download, Info } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
+import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
 import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
@@ -26,10 +28,37 @@ export default function Home() {
     );
 }
 
+type BSVNodeData = { valueClustering: ValueClustering };
+
+const momentKey = (moment: TrajectoryMoment) => `${moment.trajectoryId}::${moment.turnId}`;
+
+// Crosses two ValueClusterings (each covering one or more dimensions) into one ValueClustering
+// spanning both sets of dimensions: each entry pairs a value combination from A with one from B,
+// mapped to the trajectory moments that fall under both (i.e. the same moment appears in both
+// source value combination's moment lists). Composite keys are joined with DIMENSION_VALUE_SEPARATOR,
+// so crossing an already-composite key with another preserves the "value1_value2_value3" convention.
+function crossValueClusterings(vcA: ValueClustering, vcB: ValueClustering): ValueClustering {
+    const valueMapping: Record<string, TrajectoryMoment[]> = {};
+
+    for (const [valueA, momentsA] of Object.entries(vcA.valueMapping)) {
+        const keysA = new Set(momentsA.map(momentKey));
+        for (const [valueB, momentsB] of Object.entries(vcB.valueMapping)) {
+            const intersection = momentsB.filter((moment) => keysA.has(momentKey(moment)));
+            if (intersection.length > 0) {
+                valueMapping[`${valueA}${DIMENSION_VALUE_SEPARATOR}${valueB}`] = intersection;
+            }
+        }
+    }
+
+    return { dimensionIds: [...vcA.dimensionIds, ...vcB.dimensionIds], valueMapping };
+}
+
 function Editor() {
     const [workspace, setWorkspace] = useState<Workspace | null>(null);
     const reactFlowWrapper = useRef(null);
     const [nodes, setNodes] = useState<Node[]>([]);
+    const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+    const { getIntersectingNodes } = useReactFlow();
 
     const trajectoryColors = workspace?.settings?.trajectoryColors;
     const trajectoryColorSetting: Record<string, string> = useMemo(
@@ -89,6 +118,73 @@ function Editor() {
       URL.revokeObjectURL(url);
     }
 
+    const handleToggleCompactView = (dimensionId: string) => {
+      setWorkspace((prev) => {
+        if (!prev) return prev;
+
+        const currentlyEnabled = prev.settings?.compactView?.[dimensionId]?.enabled ?? false;
+        const compactView = {
+          ...prev.settings?.compactView,
+          [dimensionId]: { enabled: !currentlyEnabled },
+        };
+
+        const updatedWorkspace: Workspace = {
+          ...prev,
+          settings: { ...prev.settings, compactView },
+        };
+        saveWorkspace(updatedWorkspace);
+        return updatedWorkspace;
+      });
+    };
+
+    const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
+      if (node.type !== "simpleBSV") {
+        setDropTargetId(null);
+        return;
+      }
+
+      const target = getIntersectingNodes(node).find((n) => n.type === "simpleBSV" && n.id !== node.id);
+      setDropTargetId(target?.id ?? null);
+    };
+
+    const handleNodeDragStop = (_event: MouseEvent | TouchEvent, node: Node) => {
+      setDropTargetId(null);
+
+      if (node.type !== "simpleBSV") return;
+
+      const target = getIntersectingNodes(node).find((n) => n.type === "simpleBSV" && n.id !== node.id);
+      if (!target) return;
+
+      setWorkspace((prev) => {
+        if (!prev) return prev;
+
+        const vcA = (node.data as BSVNodeData).valueClustering;
+        const vcB = (target.data as BSVNodeData).valueClustering;
+        if (!vcA?.dimensionIds.length || !vcB?.dimensionIds.length) return prev;
+
+        const overlapsExistingDimension = vcA.dimensionIds.some((id) => vcB.dimensionIds.includes(id));
+        if (overlapsExistingDimension) return prev;
+
+        const crossed = crossValueClusterings(vcA, vcB);
+        const combinedKey = [...crossed.dimensionIds].sort().join("|");
+        const existingIndex = (prev.valueClusterings ?? []).findIndex(
+          (vc) => vc.dimensionIds.length === crossed.dimensionIds.length
+            && [...vc.dimensionIds].sort().join("|") === combinedKey,
+        );
+
+        const valueClusterings = [...(prev.valueClusterings ?? [])];
+        if (existingIndex >= 0) {
+          valueClusterings[existingIndex] = crossed;
+        } else {
+          valueClusterings.push(crossed);
+        }
+
+        const updatedWorkspace: Workspace = { ...prev, valueClusterings };
+        saveWorkspace(updatedWorkspace);
+        return updatedWorkspace;
+      });
+    };
+
     const handleNodesChange = (changes: NodeChange[]) => {
       setNodes((currentNodes) => applyNodeChanges(changes, currentNodes));
 
@@ -139,11 +235,23 @@ function Editor() {
                 trajectories: workspace?.trajectories ?? [],
                 valueClustering,
                 trajectoryColorSetting,
+                compactView: workspace?.settings?.compactView?.[dimensionId]?.enabled ?? true,
+                onToggleCompactView: () => handleToggleCompactView(dimensionId),
               },
             };
           }),
       );
     }, [workspace, trajectoryColorSetting]);
+
+    useEffect(() => {
+      setNodes((current) =>
+        current.map((n) =>
+          Boolean(n.data.isDropTarget) === (n.id === dropTargetId)
+            ? n
+            : { ...n, data: { ...n.data, isDropTarget: n.id === dropTargetId } },
+        ),
+      );
+    }, [dropTargetId]);
 
     return (
       <>
@@ -166,7 +274,7 @@ function Editor() {
             <button onClick={() => {handleDimensionValueCluster()}}>cluster dimension values</button>
           </div>
           <div className={styles.canvas}>
-            <ReactFlow nodes={nodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} />
+            <ReactFlow nodes={nodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} />
           </div>
           <pre>{JSON.stringify(workspace, null, 2)}</pre>
         </div>
