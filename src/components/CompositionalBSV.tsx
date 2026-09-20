@@ -7,6 +7,7 @@ import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/
 import "./styles/canvas.css"
 
 const BSVDrawingCanvas = dynamic(() => import("./BSVDrawingCanvas"), { ssr: false });
+const BSVStateMachineCanvas = dynamic(() => import("./BSVStateMachineCanvas"), { ssr: false });
 
 type compositionalBSVData = {
     dimensionNames : string[];
@@ -88,7 +89,12 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                           getTurnOrder={getTurnOrder}
                           showArrows={false}
                       />
-                  ) : (<></>)}
+                  ) : (
+                      <BSVStateMachineCanvas
+                          valueClustering={valueClustering}
+                          trajectories={trajectories}
+                      />
+                  )}
                 </div>
             </div>
         );

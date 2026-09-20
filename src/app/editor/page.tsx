@@ -158,21 +158,21 @@ function Editor() {
     };
 
     const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
-      if (node.type !== "simpleBSV") {
+      if (node.type !== "simpleBSV" && node.type !== "compositionalBSV") {
         setDropTargetId(null);
         return;
       }
 
-      const target = getIntersectingNodes(node).find((n) => n.type === "simpleBSV" && n.id !== node.id);
+      const target = getIntersectingNodes(node).find((n) => (n.type === "simpleBSV" ||  n.type === "compositionalBSV") && n.id !== node.id);
       setDropTargetId(target?.id ?? null);
     };
 
     const handleNodeDragStop = (_event: MouseEvent | TouchEvent, node: Node) => {
       setDropTargetId(null);
 
-      if (node.type !== "simpleBSV") return;
+      if (node.type !== "simpleBSV" && node.type !== "compositionalBSV") return;
 
-      const target = getIntersectingNodes(node).find((n) => n.type === "simpleBSV" && n.id !== node.id);
+      const target = getIntersectingNodes(node).find((n) => (n.type === "simpleBSV" ||  n.type === "compositionalBSV") && n.id !== node.id);
       if (!target) return;
 
       setWorkspace((prev) => {
