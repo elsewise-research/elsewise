@@ -1,5 +1,5 @@
 import { Workspace } from "@/models/Workspace";
-import { DimensionId } from "@/models/Dimension";
+import { Dimension, DimensionId } from "@/models/Dimension";
 import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
 
 const momentKey = (moment: TrajectoryMoment) => `${moment.trajectoryId}::${moment.turnId}`;
@@ -58,6 +58,23 @@ export function deleteDimension(workspace: Workspace, dimensionId: DimensionId):
     );
 
     return { ...workspace, dimensions, valueClusterings };
+}
+
+// Replaces the workspace's dimensions with the given ones, and seeds a fresh (empty)
+// ValueClustering per dimension so each has somewhere to collect moments once clustered.
+export function addDimension(workspace: Workspace, dimensions: Dimension[]): Workspace {
+    const valueClusterings: ValueClustering[] = dimensions.map((dimension) => ({
+        dimensionIds: [dimension.id],
+        valueMapping: Object.fromEntries(
+            dimension.values.map((value): [string, TrajectoryMoment[]] => [value, []]),
+        ),
+    }));
+
+    return {
+        ...workspace,
+        dimensions,
+        valueClusterings,
+    };
 }
 
 // Removes the ValueClustering spanning exactly this set of dimensions (order-independent),

@@ -10,7 +10,6 @@ export type ExtractDimensionInputType = {
 
 export type ExtractDimensionOutputType = {
     dimensions : Dimension[];
-    valueClusterings : ValueClustering[];
 };
 
 export type DimensionValueClusterInputType = {

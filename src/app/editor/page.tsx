@@ -12,7 +12,7 @@ import { Download, Info } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
 import { ValueClustering } from "@/models/ValueClustering";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
-import { crossDimensions, deleteDimension, deleteValueClustering } from "@/utils/dimension";
+import { addDimension, crossDimensions, deleteDimension, deleteValueClustering } from "@/utils/dimension";
 import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
 import SimpleBSV from "@/components/SimpleBSV";
@@ -55,11 +55,7 @@ function Editor() {
         { trajectories: workspace.trajectories, domainDescription: workspace.domainDescription },
       );
 
-      const updatedWorkspace: Workspace = {
-        ...workspace,
-        dimensions: result.dimensions,
-        valueClusterings: result.valueClusterings,
-      };
+      const updatedWorkspace = addDimension(workspace, result.dimensions);
       setWorkspace(updatedWorkspace);
       saveWorkspace(updatedWorkspace);
     };
@@ -303,6 +299,7 @@ function Editor() {
           </div>
         </div>
         <div>
+            <button onClick={() => {handleAddDimension()}}>Add dimension</button>
             <button onClick={() => {handleExtractDimension()}}>extract a dimension</button>
             <button onClick={() => {handleDimensionValueCluster()}}>cluster dimension values</button>
           </div>
