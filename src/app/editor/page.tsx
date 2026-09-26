@@ -10,8 +10,9 @@ import { ReactFlow,
 import "@xyflow/react/dist/style.css";
 import { Download, Info } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
-import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
+import { ValueClustering } from "@/models/ValueClustering";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
+import { crossDimensions } from "@/utils/dimension";
 import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
 import SimpleBSV from "@/components/SimpleBSV";
@@ -30,29 +31,6 @@ export default function Home() {
 }
 
 type BSVNodeData = { valueClustering: ValueClustering };
-
-const momentKey = (moment: TrajectoryMoment) => `${moment.trajectoryId}::${moment.turnId}`;
-
-// Crosses two ValueClusterings (each covering one or more dimensions) into one ValueClustering
-// spanning both sets of dimensions: each entry pairs a value combination from A with one from B,
-// mapped to the trajectory moments that fall under both (i.e. the same moment appears in both
-// source value combination's moment lists). Composite keys are joined with DIMENSION_VALUE_SEPARATOR,
-// so crossing an already-composite key with another preserves the "value1_value2_value3" convention.
-function crossValueClusterings(vcA: ValueClustering, vcB: ValueClustering): ValueClustering {
-    const valueMapping: Record<string, TrajectoryMoment[]> = {};
-
-    for (const [valueA, momentsA] of Object.entries(vcA.valueMapping)) {
-        const keysA = new Set(momentsA.map(momentKey));
-        for (const [valueB, momentsB] of Object.entries(vcB.valueMapping)) {
-            const intersection = momentsB.filter((moment) => keysA.has(momentKey(moment)));
-            if (intersection.length > 0) {
-                valueMapping[`${valueA}${DIMENSION_VALUE_SEPARATOR}${valueB}`] = intersection;
-            }
-        }
-    }
-
-    return { dimensionIds: [...vcA.dimensionIds, ...vcB.dimensionIds], valueMapping };
-}
 
 function Editor() {
     const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -185,19 +163,7 @@ function Editor() {
         const overlapsExistingDimension = vcA.dimensionIds.some((id) => vcB.dimensionIds.includes(id));
         if (overlapsExistingDimension) return prev;
 
-        const crossed = crossValueClusterings(vcA, vcB);
-        const combinedKey = [...crossed.dimensionIds].sort().join("|");
-        const existingIndex = (prev.valueClusterings ?? []).findIndex(
-          (vc) => vc.dimensionIds.length === crossed.dimensionIds.length
-            && [...vc.dimensionIds].sort().join("|") === combinedKey,
-        );
-
-        const valueClusterings = [...(prev.valueClusterings ?? [])];
-        if (existingIndex >= 0) {
-          valueClusterings[existingIndex] = crossed;
-        } else {
-          valueClusterings.push(crossed);
-        }
+        const valueClusterings = crossDimensions(prev.valueClusterings ?? [], vcA, vcB);
 
         const updatedWorkspace: Workspace = { ...prev, valueClusterings };
         saveWorkspace(updatedWorkspace);
