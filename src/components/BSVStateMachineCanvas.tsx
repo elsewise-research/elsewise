@@ -7,7 +7,7 @@ import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/
 
 const WIDTH = 320;
 const HEIGHT = 260;
-const NODE_RADIUS = 10;
+const NODE_RADIUS = 15;
 const MIN_OPACITY = 0.25;
 
 type SimNode = SimulationNodeDatum & {
@@ -151,8 +151,8 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories }:
                                 tx - unitX * margin,
                                 ty - unitY * margin,
                             ]}
-                            stroke="#999"
-                            fill="#999"
+                            stroke="#111"
+                            fill="#111"
                             strokeWidth={1.5}
                             pointerLength={6}
                             pointerWidth={6}
@@ -179,16 +179,16 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories }:
                     >
                         <Circle
                             radius={NODE_RADIUS}
-                            fill="#4a90d9"
+                            fill="#FFFFFF"
                             opacity={opacityFor(node.count)}
-                            stroke={hoveredNodeId === node.id ? "#333" : undefined}
-                            strokeWidth={hoveredNodeId === node.id ? 1.5 : 0}
+                            stroke={hoveredNodeId === node.id ? "#333" : "#000"}
+                            strokeWidth={hoveredNodeId === node.id ? 1.5 : 1}
                         />
                         <Text
                             text={String(node.count)}
                             fontSize={12}
                             fontStyle="600"
-                            fill="white"
+                            fill="black"
                             width={NODE_RADIUS * 2}
                             height={NODE_RADIUS * 2}
                             offsetX={NODE_RADIUS}
