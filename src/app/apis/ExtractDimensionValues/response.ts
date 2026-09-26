@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import { ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType } from '../types';
 import { callAnthropicAPI } from '../LLM';
 import { getPrompt, getSystemPrompt } from './prompt';
@@ -41,12 +40,18 @@ export async function extractDimensionValues(input: ExtractDimensionValuesInputT
     const rawResults = safeJsonParse<DimensionValues[]>(text, 'dimensionValues') ?? [];
     const valuesByName = new Map(rawResults.map((result) => [result.name, result.values]));
 
-    const outputDimensions: Dimension[] = dimensions.map((dimension) => ({
-        id: randomUUID(),
-        name: dimension.name,
-        description: dimension.description,
-        values: valuesByName.get(dimension.name) ?? [],
-    }));
+    const outputDimensions: Dimension[] = dimensions.map((dimension) => {
+        const newValues = (valuesByName.get(dimension.name) ?? []).filter(
+            (value) => !dimension.values.includes(value),
+        );
+
+        return {
+            id: dimension.id,
+            name: dimension.name,
+            description: dimension.description,
+            values: [...dimension.values, ...newValues],
+        };
+    });
 
     const valueClusterings: ValueClustering[] = outputDimensions.map((dimension) => ({
         dimensionIds: [dimension.id],

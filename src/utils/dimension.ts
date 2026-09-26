@@ -60,20 +60,24 @@ export function deleteDimension(workspace: Workspace, dimensionId: DimensionId):
     return { ...workspace, dimensions, valueClusterings };
 }
 
-// Replaces the workspace's dimensions with the given ones, and seeds a fresh (empty)
-// ValueClustering per dimension so each has somewhere to collect moments once clustered.
-export function addDimension(workspace: Workspace, dimensions: Dimension[]): Workspace {
-    const valueClusterings: ValueClustering[] = dimensions.map((dimension) => ({
+// A fresh ValueClustering for a dimension: one entry per known value, each starting
+// with no trajectory moments assigned yet.
+function emptyValueClustering(dimension: Dimension): ValueClustering {
+    return {
         dimensionIds: [dimension.id],
         valueMapping: Object.fromEntries(
             dimension.values.map((value): [string, TrajectoryMoment[]] => [value, []]),
         ),
-    }));
+    };
+}
 
+// Appends a single new dimension (and a fresh ValueClustering for it) onto the workspace,
+// leaving existing dimensions and their clusterings untouched.
+export function appendDimension(workspace: Workspace, dimension: Dimension): Workspace {
     return {
         ...workspace,
-        dimensions,
-        valueClusterings,
+        dimensions: [...(workspace.dimensions ?? []), dimension],
+        valueClusterings: [...(workspace.valueClusterings ?? []), emptyValueClustering(dimension)],
     };
 }
 

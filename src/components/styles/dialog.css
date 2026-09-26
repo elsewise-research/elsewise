@@ -1,0 +1,66 @@
+.dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.dialog {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.dialog h2 {
+    margin: 0;
+    font-size: 16px;
+    color: #333;
+}
+
+.dialog label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: #555;
+}
+
+.dialog input,
+.dialog textarea {
+    font: inherit;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    color: #000;
+    resize: vertical;
+}
+
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.dialog-actions button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: white;
+    color: #000;
+    cursor: pointer;
+}
+
+.dialog-actions button[type="submit"] {
+    background: #333;
+    color: white;
+    border-color: #333;
+}

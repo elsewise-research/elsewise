@@ -8,15 +8,17 @@ import { ReactFlow,
   type Node,
   type NodeChange } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Download, Info } from "lucide-react";
+import { Download, Info, Plus, Sparkles, Group } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
+import { Dimension } from "@/models/Dimension";
 import { ValueClustering } from "@/models/ValueClustering";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
-import { addDimension, crossDimensions, deleteDimension, deleteValueClustering } from "@/utils/dimension";
+import { appendDimension, crossDimensions, deleteDimension, deleteValueClustering } from "@/utils/dimension";
 import { callApi } from "@/app/apis/api";
-import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
+import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType, ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType } from "@/app/apis/types";
 import SimpleBSV from "@/components/SimpleBSV";
 import CompositionalBSV from "@/components/CompositionalBSV";
+import AddDimensionDialog, { type AddDimensionInput } from "@/components/dialogs/AddDimensionDialog";
 import icon from "@/app/icon.png";
 import styles from "./editor.module.css";
 
@@ -37,6 +39,7 @@ function Editor() {
     const reactFlowWrapper = useRef(null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+    const [isAddDimensionOpen, setIsAddDimensionOpen] = useState(false);
     const { getIntersectingNodes } = useReactFlow();
 
     const trajectoryColors = workspace?.settings?.trajectoryColors;
@@ -47,15 +50,59 @@ function Editor() {
       [trajectoryColors],
     );
 
+    const handleAddDimension = () => {
+      setIsAddDimensionOpen(true);
+    };
+
+    const handleSubmitAddDimension = async (input: AddDimensionInput) => {
+      setIsAddDimensionOpen(false);
+      if (!workspace) return;
+
+      const id = crypto.randomUUID();
+      // input.values are user-entered; pass them through as each dimension's existing
+      // "values" so the LLM extracts additional ones instead of regenerating these.
+      let values = input.values;
+
+      if (workspace.trajectories?.length) {
+        const result = await callApi<ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType>(
+          "/apis/ExtractDimensionValues",
+          {
+            trajectories: workspace.trajectories,
+            dimensions: [{ id, name: input.name, description: input.description, values: input.values }],
+            domainDescription: workspace.domainDescription,
+          },
+        );
+        values = result.dimensions[0]?.values ?? input.values;
+      }
+
+      const dimension: Dimension = {
+        id,
+        name: input.name,
+        description: input.description,
+        values,
+      };
+
+      const updatedWorkspace = appendDimension(workspace, dimension);
+      setWorkspace(updatedWorkspace);
+      saveWorkspace(updatedWorkspace);
+    };
+
     const handleExtractDimension = async () => {
       if (!workspace?.trajectories) return;
 
       const result = await callApi<ExtractDimensionInputType, ExtractDimensionOutputType>(
         "/apis/ExtractDimension",
-        { trajectories: workspace.trajectories, domainDescription: workspace.domainDescription },
+        {
+          trajectories: workspace.trajectories,
+          domainDescription: workspace.domainDescription,
+          existingDimensions: workspace.dimensions?.map(({ name, description }) => ({ name, description })),
+        },
       );
 
-      const updatedWorkspace = addDimension(workspace, result.dimensions);
+      const updatedWorkspace = result.dimensions.reduce(
+        (ws, dimension) => appendDimension(ws, dimension),
+        workspace,
+      );
       setWorkspace(updatedWorkspace);
       saveWorkspace(updatedWorkspace);
     };
@@ -295,19 +342,24 @@ function Editor() {
           <button onClick={() => {window.open("https://elsewise-research.github.io", "_blank", "noopener,noreferrer")}} title="about us" aria-label="about us">
             <Info size={16} />
           </button>
-          
           </div>
         </div>
-        <div>
-            <button onClick={() => {handleAddDimension()}}>Add dimension</button>
-            <button onClick={() => {handleExtractDimension()}}>extract a dimension</button>
-            <button onClick={() => {handleDimensionValueCluster()}}>cluster dimension values</button>
+          <div className={styles["action-bar"]}>
+              <button onClick={() => {handleAddDimension()}}><Plus size={16} /></button>
+              <button onClick={() => {handleExtractDimension()}}><Sparkles size={16} /></button>
+              <button onClick={() => {handleDimensionValueCluster()}}><Group size={16} /></button>
           </div>
           <div className={styles.canvas}>
             <ReactFlow nodes={nodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} />
           </div>
           <pre>{JSON.stringify(workspace, null, 2)}</pre>
         </div>
+        {isAddDimensionOpen && (
+          <AddDimensionDialog
+            onSubmit={handleSubmitAddDimension}
+            onCancel={() => setIsAddDimensionOpen(false)}
+          />
+        )}
       </>
     );
   }

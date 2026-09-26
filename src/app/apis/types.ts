@@ -6,6 +6,9 @@ export type ExtractDimensionInputType = {
     trajectories : Trajectory[];
     numDimensions? : number;
     domainDescription? : string;
+    // Dimensions already present in the workspace; the LLM is asked to propose
+    // additional dimensions distinct from these rather than repeating them.
+    existingDimensions? : Pick<Dimension, "name" | "description">[];
 };
 
 export type ExtractDimensionOutputType = {
@@ -24,7 +27,9 @@ export type DimensionValueClusterOutputType = {
 
 export type ExtractDimensionValuesInputType = {
     trajectories : Trajectory[];
-    dimensions : Pick<Dimension, "name" | "description">[];
+    // dimensions may already carry user-specified values; the API extracts additional
+    // values distinct from those, rather than overwriting them.
+    dimensions : Pick<Dimension, "id" | "name" | "description" | "values">[];
     domainDescription? : string;
 };
 
