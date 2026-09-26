@@ -27,6 +27,7 @@ type Props = {
     getTurnOrder: (moment: TrajectoryMoment) => number | undefined;
     columnLabel?: (column: string) => string;
     showArrows?: boolean;
+    onMomentClick?: (moment: TrajectoryMoment) => void;
 };
 
 export default function BSVDrawingCanvas({
@@ -38,6 +39,7 @@ export default function BSVDrawingCanvas({
     getTurnOrder,
     columnLabel = (column) => column,
     showArrows = true,
+    onMomentClick,
 }: Props) {
     const [hovered, setHovered] = useState<HoverInfo | null>(null);
 
@@ -169,6 +171,8 @@ export default function BSVDrawingCanvas({
                             key={key}
                             x={pos.x}
                             y={pos.y}
+                            onClick={() => onMomentClick?.({ trajectoryId, turnId })}
+                            onTap={() => onMomentClick?.({ trajectoryId, turnId })}
                             onMouseEnter={(e) => {
                                 const stage = e.target.getStage();
                                 if (stage) stage.container().style.cursor = "pointer";

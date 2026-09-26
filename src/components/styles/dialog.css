@@ -9,6 +9,7 @@
 }
 
 .dialog {
+    position: relative;
     background: white;
     border-radius: 8px;
     padding: 20px;
@@ -63,4 +64,25 @@
     background: #333;
     color: white;
     border-color: #333;
+}
+
+.dialog-collapse-btn {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    color: #999;
+}
+
+.dialog li {
+    display: flex;
+    gap: 8px;
+    color: #333;
+}
+
+.dialog p {
+    color: #333;
+}
+
+.dialog button {
+    color: #555;
 }

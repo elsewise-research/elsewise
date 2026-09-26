@@ -19,6 +19,7 @@ type simpleBSVData = {
     onToggleCompactView : () => void;
     onDelete : () => void;
     onValueCluster : () => void;
+    onMomentClick : (moment: TrajectoryMoment) => void;
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
@@ -33,6 +34,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         onToggleCompactView,
         onDelete,
         onValueCluster,
+        onMomentClick,
         isDropTarget} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
@@ -66,6 +68,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             className="trajectory-moment-markor"
             style={{ backgroundColor: trajectoryColorSetting[moment.trajectoryId] }}
             title={`trajectoryId: ${moment.trajectoryId}\nturnId: ${moment.turnId}`}
+            onClick={() => onMomentClick(moment)}
         >
             {getTurnOrder(moment)}
         </span>
@@ -124,6 +127,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                     trajectories={trajectories}
                     trajectoryColorSetting={trajectoryColorSetting}
                     getTurnOrder={getTurnOrder}
+                    onMomentClick={onMomentClick}
                 />
             )}
             </div>

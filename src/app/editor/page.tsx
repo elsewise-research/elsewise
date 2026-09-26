@@ -11,7 +11,7 @@ import "@xyflow/react/dist/style.css";
 import { Download, Info, Plus, Sparkles, Group } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
 import { Dimension } from "@/models/Dimension";
-import { ValueClustering } from "@/models/ValueClustering";
+import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
 import { appendDimension, crossDimensions, deleteDimension, deleteValueClustering } from "@/utils/dimension";
 import { callApi } from "@/app/apis/api";
@@ -77,6 +77,7 @@ function Editor() {
     const [nodes, setNodes] = useState<Node[]>([]);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [isAddDimensionOpen, setIsAddDimensionOpen] = useState(false);
+    const [currTrajectoryMoment, setCurrTrajectoryMoment] = useState<TrajectoryMoment | undefined>(undefined);
     const { getIntersectingNodes } = useReactFlow();
 
     const trajectoryColors = workspace?.settings?.trajectoryColors;
@@ -321,6 +322,7 @@ function Editor() {
               onToggleCompactView: () => handleToggleCompactView(dimensionId),
               onDelete: () => handleDeleteDimension(dimensionId),
               onValueCluster: () => handleDimensionValueCluster([dimensionId]),
+              onMomentClick: (moment: TrajectoryMoment) => setCurrTrajectoryMoment(moment),
             },
           };
         });
@@ -347,6 +349,7 @@ function Editor() {
               matrixView: workspace?.settings?.matrixView?.[dimensionIdsKey]?.enabled ?? true,
               onToggleMatrixView: () => handleToggleMatrixView(dimensionIdsKey),
               onDelete: () => handleDeleteValueClustering(valueClustering.dimensionIds),
+              onMomentClick: (moment: TrajectoryMoment) => setCurrTrajectoryMoment(moment),
             },
           };
         });
@@ -385,8 +388,10 @@ function Editor() {
           </div>
           <div className={styles["trajectory-viewer"]}>
             <TrajectoryViewer
+              currTrajectoryMoment={currTrajectoryMoment}
               trajectories={workspace?.trajectories ?? []}
               trajectoryColorSetting={trajectoryColorSetting}
+              onBackToOverview={() => setCurrTrajectoryMoment(undefined)}
             />
           </div>
           <div className={styles.canvas}>
