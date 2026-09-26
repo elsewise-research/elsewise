@@ -20,6 +20,7 @@ type compositionalBSVData = {
     onToggleMatrixView : () => void;
     onDelete : () => void;
     onMomentClick : (moment: TrajectoryMoment) => void;
+    currTrajectoryMoment? : TrajectoryMoment;
 }
 
 type CompositionalBSV = Node<compositionalBSVData, 'compositionalBSV'>;
@@ -34,6 +35,7 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
         onToggleMatrixView,
         onDelete,
         onMomentClick,
+        currTrajectoryMoment,
         isDropTarget} = data;
 
         const isMatrixViewEligible = valueClustering.dimensionIds.length === 2;
@@ -92,7 +94,7 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                         </span>
                     ))}
                 </div>
-                <div className="bsv-viz">
+                <div className="bsv-viz nodrag">
                   {showMatrixView ? (
                       <BSVDrawingCanvas
                           values={Array.from(rows)}
@@ -103,6 +105,7 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                           getTurnOrder={getTurnOrder}
                           showArrows={false}
                           onMomentClick={onMomentClick}
+                          currTrajectoryMoment={currTrajectoryMoment}
                       />
                   ) : (
                       <BSVStateMachineCanvas

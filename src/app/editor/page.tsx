@@ -367,6 +367,12 @@ function Editor() {
       );
     }, [dropTargetId]);
 
+    useEffect(() => {
+      setNodes((current) =>
+        current.map((n) => ({ ...n, data: { ...n.data, currTrajectoryMoment } })),
+      );
+    }, [currTrajectoryMoment]);
+
     return (
       <>
         <div className={styles["root"]} ref={reactFlowWrapper}>

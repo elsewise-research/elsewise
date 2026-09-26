@@ -3,14 +3,13 @@ import { ExtractDimensionInputType, ExtractDimensionOutputType } from '../types'
 import { callAnthropicAPI } from '../LLM';
 import { getPrompt, getSystemPrompt } from './prompt';
 import { Dimension } from '@/models/Dimension';
-import { ValueClustering, TrajectoryMoment } from '@/models/ValueClustering';
 import { safeJsonParse } from '@/utils/jsonParser';
 
 export async function extractDimension(input: ExtractDimensionInputType): Promise<ExtractDimensionOutputType> {
 
     try {
     
-    const {trajectories, numDimensions = 3, domainDescription} = input
+    const {trajectories, numDimensions = 3, domainDescription, existingDimensions} = input
 
     const text = await callAnthropicAPI(
         getSystemPrompt(),
@@ -23,7 +22,8 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
                 text: getPrompt({
                     trajectories,
                     numDimensions,
-                    domainDescription
+                    domainDescription,
+                    existingDimensions
                 }),
               },
             ],
@@ -39,24 +39,15 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
         id: randomUUID(),
     }));
 
-    const valueClusterings: ValueClustering[] = dimensions.map((dimension) => ({
-        dimensionIds: [dimension.id],
-        valueMapping: Object.fromEntries(
-            dimension.values.map((value): [string, TrajectoryMoment[]] => [value, []]),
-        ),
-    }));
-
     return {
-        dimensions,
-        valueClusterings
+        dimensions
     };
 
     } catch (error) {
         console.error('Error in extracting dimension:', error);
 
         return {
-            dimensions: [], 
-            valueClusterings: []
+            dimensions: []
         };
 
     }

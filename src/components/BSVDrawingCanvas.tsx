@@ -28,6 +28,7 @@ type Props = {
     columnLabel?: (column: string) => string;
     showArrows?: boolean;
     onMomentClick?: (moment: TrajectoryMoment) => void;
+    currTrajectoryMoment?: TrajectoryMoment;
 };
 
 export default function BSVDrawingCanvas({
@@ -40,6 +41,7 @@ export default function BSVDrawingCanvas({
     columnLabel = (column) => column,
     showArrows = true,
     onMomentClick,
+    currTrajectoryMoment,
 }: Props) {
     const [hovered, setHovered] = useState<HoverInfo | null>(null);
 
@@ -184,7 +186,19 @@ export default function BSVDrawingCanvas({
                                 setHovered(null);
                             }}
                         >
-                            <Circle radius={CIRCLE_RADIUS} fill={trajectoryColorSetting[trajectoryId] ?? "#999"} />
+                            <Circle
+                                radius={CIRCLE_RADIUS}
+                                fill={trajectoryColorSetting[trajectoryId] ?? "#999"}
+                                stroke={
+                                    currTrajectoryMoment
+                                    && currTrajectoryMoment.trajectoryId === trajectoryId
+                                    && currTrajectoryMoment.turnId === turnId
+                                        ? "black"
+                                        : undefined
+                                }
+                                strokeWidth={2}
+                                opacity={0.6}
+                            />
                             <Text
                                 text={order !== undefined ? String(order) : ""}
                                 fontSize={10}

@@ -20,6 +20,7 @@ type simpleBSVData = {
     onDelete : () => void;
     onValueCluster : () => void;
     onMomentClick : (moment: TrajectoryMoment) => void;
+    currTrajectoryMoment? : TrajectoryMoment;
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
@@ -35,6 +36,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         onDelete,
         onValueCluster,
         onMomentClick,
+        currTrajectoryMoment,
         isDropTarget} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
@@ -62,10 +64,14 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         if (confirmed) onDelete();
     };
 
+    const isCurrTrajectoryMoment = (moment: TrajectoryMoment) =>
+        currTrajectoryMoment?.trajectoryId === moment.trajectoryId
+        && currTrajectoryMoment?.turnId === moment.turnId;
+
     const renderMoment = (moment: TrajectoryMoment) => (
         <span
             key={`${moment.trajectoryId}-${moment.turnId}`}
-            className="trajectory-moment-markor"
+            className={`trajectory-moment-markor${isCurrTrajectoryMoment(moment) ? " trajectory-moment-markor--current" : ""}`}
             style={{ backgroundColor: trajectoryColorSetting[moment.trajectoryId] }}
             title={`trajectoryId: ${moment.trajectoryId}\nturnId: ${moment.turnId}`}
             onClick={() => onMomentClick(moment)}
@@ -98,7 +104,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             </div>
             <div className="bsv-title">{dimensionName}</div>
             <div className="bsv-description">{dimensionDescription}</div>
-            <div className="bsv-viz">
+            <div className="bsv-viz nodrag">
             {compactView ? (
                 <table className="bsv-table">
                     <tbody>
@@ -128,6 +134,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                     trajectoryColorSetting={trajectoryColorSetting}
                     getTurnOrder={getTurnOrder}
                     onMomentClick={onMomentClick}
+                    currTrajectoryMoment={currTrajectoryMoment}
                 />
             )}
             </div>
