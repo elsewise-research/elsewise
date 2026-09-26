@@ -156,7 +156,7 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories }:
                             strokeWidth={1.5}
                             pointerLength={6}
                             pointerWidth={6}
-                            opacity={0.7}
+                            opacity={(opacityFor(source.count) + opacityFor(target.count)) / 2}
                         />
                     );
                 })}
