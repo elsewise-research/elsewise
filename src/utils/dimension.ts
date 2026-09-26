@@ -1,3 +1,5 @@
+import { Workspace } from "@/models/Workspace";
+import { DimensionId } from "@/models/Dimension";
 import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
 
 const momentKey = (moment: TrajectoryMoment) => `${moment.trajectoryId}::${moment.turnId}`;
@@ -45,3 +47,28 @@ export function crossDimensions(
     }
     return updated;
 }
+
+// Removes a dimension and any ValueClustering that references it. A composite (crossed)
+// ValueClustering can't be safely reduced by dropping just one of its dimensions without
+// its original per-dimension components, so it's dropped entirely rather than patched.
+export function deleteDimension(workspace: Workspace, dimensionId: DimensionId): Workspace {
+    const dimensions = (workspace.dimensions ?? []).filter((dimension) => dimension.id !== dimensionId);
+    const valueClusterings = (workspace.valueClusterings ?? []).filter(
+        (vc) => !vc.dimensionIds.includes(dimensionId),
+    );
+
+    return { ...workspace, dimensions, valueClusterings };
+}
+
+// Removes the ValueClustering spanning exactly this set of dimensions (order-independent),
+// leaving the underlying simple dimensions and their own clusterings untouched. Use this to
+// discard a composite (crossed) clustering without deleting the dimensions it was built from.
+export function deleteValueClustering(workspace: Workspace, dimensionIds: DimensionId[]): Workspace {
+    const key = [...dimensionIds].sort().join("|");
+    const valueClusterings = (workspace.valueClusterings ?? []).filter(
+        (vc) => [...vc.dimensionIds].sort().join("|") !== key,
+    );
+
+    return { ...workspace, valueClusterings };
+}
+

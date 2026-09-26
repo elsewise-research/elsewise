@@ -12,7 +12,7 @@ import { Download, Info } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
 import { ValueClustering } from "@/models/ValueClustering";
 import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
-import { crossDimensions } from "@/utils/dimension";
+import { crossDimensions, deleteDimension, deleteValueClustering } from "@/utils/dimension";
 import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType } from "@/app/apis/types";
 import SimpleBSV from "@/components/SimpleBSV";
@@ -135,6 +135,26 @@ function Editor() {
       });
     };
 
+    const handleDeleteDimension = (dimensionId: string) => {
+      setWorkspace((prev) => {
+        if (!prev) return prev;
+
+        const updatedWorkspace = deleteDimension(prev, dimensionId);
+        saveWorkspace(updatedWorkspace);
+        return updatedWorkspace;
+      });
+    };
+
+    const handleDeleteValueClustering = (dimensionIds: string[]) => {
+      setWorkspace((prev) => {
+        if (!prev) return prev;
+
+        const updatedWorkspace = deleteValueClustering(prev, dimensionIds);
+        saveWorkspace(updatedWorkspace);
+        return updatedWorkspace;
+      });
+    };
+
     const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type !== "simpleBSV" && node.type !== "compositionalBSV") {
         setDropTargetId(null);
@@ -222,6 +242,7 @@ function Editor() {
               trajectoryColorSetting,
               compactView: workspace?.settings?.compactView?.[dimensionId]?.enabled ?? true,
               onToggleCompactView: () => handleToggleCompactView(dimensionId),
+              onDelete: () => handleDeleteDimension(dimensionId),
             },
           };
         });
@@ -247,6 +268,7 @@ function Editor() {
               trajectoryColorSetting,
               matrixView: workspace?.settings?.matrixView?.[dimensionIdsKey]?.enabled ?? true,
               onToggleMatrixView: () => handleToggleMatrixView(dimensionIdsKey),
+              onDelete: () => handleDeleteValueClustering(valueClustering.dimensionIds),
             },
           };
         });

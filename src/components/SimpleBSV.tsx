@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-import { Rows3, LayoutGrid } from "lucide-react";
+import { Rows3, LayoutGrid, Trash2 } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
@@ -17,6 +17,7 @@ type simpleBSVData = {
     compactView : boolean;
     isDropTarget? : boolean;
     onToggleCompactView : () => void;
+    onDelete : () => void;
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
@@ -29,6 +30,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         trajectoryColorSetting,
         compactView,
         onToggleCompactView,
+        onDelete,
         isDropTarget} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
@@ -48,6 +50,13 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
 
     const getTurnOrder = (moment: TrajectoryMoment): number | undefined =>
         turnOrderByTrajectory.get(moment.trajectoryId)?.get(moment.turnId);
+
+    const handleDeleteClick = () => {
+        const confirmed = window.confirm(
+            `Delete "${dimensionName}"? Any BSV that references this dimension — including combined views crossed with other dimensions — will also be deleted. This cannot be undone.`
+        );
+        if (confirmed) onDelete();
+    };
 
     const renderMoment = (moment: TrajectoryMoment) => (
         <span
@@ -74,6 +83,9 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             <div className="bsv-toolkit">
                 <button onClick={onToggleCompactView} title={compactView ? "Switch to expanded view" : "Switch to compact view"}>
                     {compactView ? <LayoutGrid size={16} /> : <Rows3 size={16} />}
+                </button>
+                <button onClick={handleDeleteClick} title="Delete this BSV">
+                    <Trash2 size={16} />
                 </button>
             </div>
             <div className="bsv-title">{dimensionName}</div>

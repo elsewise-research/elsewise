@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-import { Grid3x3, Workflow } from "lucide-react";
+import { Grid3x3, Workflow, Trash2 } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
@@ -18,6 +18,7 @@ type compositionalBSVData = {
     matrixView : boolean;
     isDropTarget? : boolean;
     onToggleMatrixView : () => void;
+    onDelete : () => void;
 }
 
 type CompositionalBSV = Node<compositionalBSVData, 'compositionalBSV'>;
@@ -30,6 +31,7 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
         trajectoryColorSetting,
         matrixView,
         onToggleMatrixView,
+        onDelete,
         isDropTarget} = data;
 
         const isMatrixViewEligible = valueClustering.dimensionIds.length === 2;
@@ -46,6 +48,13 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
 
         const getTurnOrder = (moment: TrajectoryMoment): number | undefined =>
             turnOrderByTrajectory.get(moment.trajectoryId)?.get(moment.turnId);
+
+        const handleDeleteClick = () => {
+            const confirmed = window.confirm(
+                `Delete this combined BSV (${dimensionNames.join(" × ")})? Any BSV that references these dimensions — including other combined views — will also be deleted. This cannot be undone.`
+            );
+            if (confirmed) onDelete();
+        };
 
         // The crossed valueClustering's keys are composite "rowValue_colValue" strings
         // (per DIMENSION_VALUE_SEPARATOR). Split them back out into the two dimensions'
@@ -68,6 +77,9 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                             {showMatrixView ? <Workflow size={16} /> : <Grid3x3 size={16} />}
                         </button>
                     )}
+                    <button onClick={handleDeleteClick} title="Delete this BSV">
+                        <Trash2 size={16} />
+                    </button>
                 </div>
                 <div className="bsv-title">{dimensionNames.join(" × ")}</div>
                 <div className="bsv-description">
