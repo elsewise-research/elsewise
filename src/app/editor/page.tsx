@@ -18,6 +18,7 @@ import { callApi } from "@/app/apis/api";
 import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType, ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType } from "@/app/apis/types";
 import SimpleBSV from "@/components/SimpleBSV";
 import CompositionalBSV from "@/components/CompositionalBSV";
+import TrajectoryViewer  from "@/components/TrajectoryViewer";
 import AddDimensionDialog, { type AddDimensionInput } from "@/components/dialogs/AddDimensionDialog";
 import icon from "@/app/icon.png";
 import styles from "./editor.module.css";
@@ -33,6 +34,42 @@ export default function Home() {
 }
 
 type BSVNodeData = { valueClustering: ValueClustering };
+
+// Clusters trajectory moments into each dimension's values (scoped to dimensionIds if given,
+// otherwise every dimension in the workspace), merging the result back in without disturbing
+// any other dimension's or composite's existing clustering. Takes workspace explicitly (rather
+// than reading component state) so callers can chain it onto a workspace they just updated,
+// without waiting a render for that update to land in state.
+async function clusterDimensionValues(workspace: Workspace, dimensionIds?: string[]): Promise<Workspace> {
+    if (!workspace.trajectories || !workspace.dimensions?.length) return workspace;
+
+    const dimensionsToCluster = dimensionIds
+      ? workspace.dimensions.filter((dimension) => dimensionIds.includes(dimension.id))
+      : workspace.dimensions;
+    if (dimensionsToCluster.length === 0) return workspace;
+
+    const result = await callApi<DimensionValueClusterInputType, DimensionValueClusterOutputType>(
+      "/apis/DimensionValueCluster",
+      {
+        trajectories: workspace.trajectories,
+        dimensions: dimensionsToCluster,
+        domainDescription: workspace.domainDescription,
+      },
+    );
+
+    // Replace only the clusterings that match a dimension set we just (re)clustered,
+    // leaving every other clustering (including composites) untouched.
+    const dimensionIdsKey = (ids: string[]) => [...ids].sort().join("|");
+    const resultKeys = new Set(result.valueClusterings.map((vc) => dimensionIdsKey(vc.dimensionIds)));
+    const preserved = (workspace.valueClusterings ?? []).filter(
+      (vc) => !resultKeys.has(dimensionIdsKey(vc.dimensionIds)),
+    );
+
+    return {
+      ...workspace,
+      valueClusterings: [...preserved, ...result.valueClusterings],
+    };
+}
 
 function Editor() {
     const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -99,27 +136,24 @@ function Editor() {
         },
       );
 
-      const updatedWorkspace = result.dimensions.reduce(
+      const appendedWorkspace = result.dimensions.reduce(
         (ws, dimension) => appendDimension(ws, dimension),
         workspace,
+      );
+
+      // Cluster only the dimensions we just extracted, not the whole workspace.
+      const updatedWorkspace = await clusterDimensionValues(
+        appendedWorkspace,
+        result.dimensions.map((dimension) => dimension.id),
       );
       setWorkspace(updatedWorkspace);
       saveWorkspace(updatedWorkspace);
     };
 
-    const handleDimensionValueCluster = async () => {
-      if (!workspace?.trajectories || !workspace?.dimensions?.length) return;
+    const handleDimensionValueCluster = async (dimensionIds?: string[]) => {
+      if (!workspace) return;
 
-      const result = await callApi<DimensionValueClusterInputType, DimensionValueClusterOutputType>(
-        "/apis/DimensionValueCluster",
-        {
-          trajectories: workspace.trajectories,
-          dimensions: workspace.dimensions,
-          domainDescription: workspace.domainDescription,
-        },
-      );
-
-      const updatedWorkspace: Workspace = { ...workspace, valueClusterings: result.valueClusterings };
+      const updatedWorkspace = await clusterDimensionValues(workspace, dimensionIds);
       setWorkspace(updatedWorkspace);
       saveWorkspace(updatedWorkspace);
     };
@@ -286,6 +320,7 @@ function Editor() {
               compactView: workspace?.settings?.compactView?.[dimensionId]?.enabled ?? true,
               onToggleCompactView: () => handleToggleCompactView(dimensionId),
               onDelete: () => handleDeleteDimension(dimensionId),
+              onValueCluster: () => handleDimensionValueCluster([dimensionId]),
             },
           };
         });
@@ -347,7 +382,12 @@ function Editor() {
           <div className={styles["action-bar"]}>
               <button onClick={() => {handleAddDimension()}}><Plus size={16} /></button>
               <button onClick={() => {handleExtractDimension()}}><Sparkles size={16} /></button>
-              <button onClick={() => {handleDimensionValueCluster()}}><Group size={16} /></button>
+          </div>
+          <div className={styles["trajectory-viewer"]}>
+            <TrajectoryViewer
+              trajectories={workspace?.trajectories ?? []}
+              trajectoryColorSetting={trajectoryColorSetting}
+            />
           </div>
           <div className={styles.canvas}>
             <ReactFlow nodes={nodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} />

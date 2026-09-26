@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-import { Rows3, LayoutGrid, Trash2 } from "lucide-react";
+import { Rows3, LayoutGrid, Trash2, Group } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
@@ -18,6 +18,7 @@ type simpleBSVData = {
     isDropTarget? : boolean;
     onToggleCompactView : () => void;
     onDelete : () => void;
+    onValueCluster : () => void;
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
@@ -31,6 +32,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         compactView,
         onToggleCompactView,
         onDelete,
+        onValueCluster,
         isDropTarget} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
@@ -83,6 +85,9 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             <div className="bsv-toolkit">
                 <button onClick={onToggleCompactView} title={compactView ? "Switch to expanded view" : "Switch to compact view"}>
                     {compactView ? <LayoutGrid size={16} /> : <Rows3 size={16} />}
+                </button>
+                <button onClick={onValueCluster} title="Cluster trajectory moments based on the values">
+                    <Group size={16} />
                 </button>
                 <button onClick={handleDeleteClick} title="Delete this BSV">
                     <Trash2 size={16} />
