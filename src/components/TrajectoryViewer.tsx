@@ -39,7 +39,7 @@ export default function TrajectoryViewer({
         {currTrajectoryMoment ? (
             turn ? (
                 <div>
-                    <button onClick={onBackToOverview}>{"<- "}Back to trajectory legend</button>
+                    <button onClick={onBackToOverview}>{"<- "}Back to trajectory overview</button>
                     <p>
                         <b>Trajectory:</b>{" "}
                         <span
@@ -64,7 +64,7 @@ export default function TrajectoryViewer({
             ) : (
                 <div>
                     <p>Turn &quot;{currTrajectoryMoment.turnId}&quot; not found in trajectory &quot;{currTrajectoryMoment.trajectoryId}&quot;.</p>
-                    <button onClick={onBackToOverview}>{"<- "}Back to trajectory legend</button>
+                    <button onClick={onBackToOverview}>{"<- "}Back to trajectory overview</button>
                 </div>
             )
         ) : (
