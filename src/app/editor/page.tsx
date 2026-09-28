@@ -234,6 +234,17 @@ function Editor() {
       });
     };
 
+    const handleMomentClick = (moment: TrajectoryMoment) => {
+      setCurrTrajectoryMoment(moment);
+
+      const trajectory = workspace?.trajectories?.find((trajectory) => trajectory.id === moment.trajectoryId);
+      setHighlightedTrajectoryMoments(
+        trajectory
+          ? trajectory.turns.map((turn) => ({ trajectoryId: trajectory.id, turnId: turn.id }))
+          : [],
+      );
+    };
+
     const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type !== "simpleBSV" && node.type !== "compositionalBSV") {
         setDropTargetId(null);
@@ -323,7 +334,7 @@ function Editor() {
               onToggleCompactView: () => handleToggleCompactView(dimensionId),
               onDelete: () => handleDeleteDimension(dimensionId),
               onValueCluster: () => handleDimensionValueCluster([dimensionId]),
-              onMomentClick: (moment: TrajectoryMoment) => setCurrTrajectoryMoment(moment),
+              onMomentClick: handleMomentClick,
               highlightedTrajectoryMoments,
             },
           };
@@ -351,7 +362,7 @@ function Editor() {
               matrixView: workspace?.settings?.matrixView?.[dimensionIdsKey]?.enabled ?? true,
               onToggleMatrixView: () => handleToggleMatrixView(dimensionIdsKey),
               onDelete: () => handleDeleteValueClustering(valueClustering.dimensionIds),
-              onMomentClick: (moment: TrajectoryMoment) => setCurrTrajectoryMoment(moment),
+              onMomentClick: handleMomentClick,
               highlightedTrajectoryMoments,
             },
           };

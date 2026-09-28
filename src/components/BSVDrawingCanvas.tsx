@@ -53,6 +53,9 @@ export default function BSVDrawingCanvas({
         || highlightedTrajectoryMoments.some(
             (highlighted) => highlighted.trajectoryId === trajectoryId && highlighted.turnId === turnId,
         );
+
+    const markerOpacity = (trajectoryId: string, turnId: string) =>
+        isHighlighted(trajectoryId, turnId) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY;
     const [hovered, setHovered] = useState<HoverInfo | null>(null);
 
     const cellCenter = (rowIndex: number, colIndex: number) => ({
@@ -78,10 +81,12 @@ export default function BSVDrawingCanvas({
     });
 
     const arrows = !showArrows ? [] : trajectories.flatMap((trajectory) => {
-        const segments: { key: string; points: number[]; color: string }[] = [];
+        const segments: { key: string; points: number[]; color: string; opacity: number }[] = [];
         for (let i = 0; i < trajectory.turns.length - 1; i++) {
-            const from = momentPositions.get(`${trajectory.id}::${trajectory.turns[i].id}`);
-            const to = momentPositions.get(`${trajectory.id}::${trajectory.turns[i + 1].id}`);
+            const fromTurnId = trajectory.turns[i].id;
+            const toTurnId = trajectory.turns[i + 1].id;
+            const from = momentPositions.get(`${trajectory.id}::${fromTurnId}`);
+            const to = momentPositions.get(`${trajectory.id}::${toTurnId}`);
             if (!from || !to) continue;
 
             // Trim both ends back to the circles' edges so the line (and its arrowhead)
@@ -102,6 +107,7 @@ export default function BSVDrawingCanvas({
                     to.y - unitY * margin,
                 ],
                 color: trajectoryColorSetting[trajectory.id] ?? "#999",
+                opacity: (markerOpacity(trajectory.id, fromTurnId) + markerOpacity(trajectory.id, toTurnId)) / 2,
             });
         }
         return segments;
@@ -170,7 +176,7 @@ export default function BSVDrawingCanvas({
                         strokeWidth={1.5}
                         pointerLength={6}
                         pointerWidth={6}
-                        opacity={0.7}
+                        opacity={arrow.opacity}
                     />
                 ))}
 
@@ -183,7 +189,7 @@ export default function BSVDrawingCanvas({
                             key={key}
                             x={pos.x}
                             y={pos.y}
-                            opacity={isHighlighted(trajectoryId, turnId) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY}
+                            opacity={markerOpacity(trajectoryId, turnId)}
                             onClick={() => onMomentClick?.({ trajectoryId, turnId })}
                             onTap={() => onMomentClick?.({ trajectoryId, turnId })}
                             onMouseEnter={(e) => {
