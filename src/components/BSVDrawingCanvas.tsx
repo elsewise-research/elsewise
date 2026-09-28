@@ -1,16 +1,17 @@
 'use client';
 import { useState } from "react";
-import { Stage, Layer, Line, Rect, Text, Circle, Group, Arrow, Label, Tag } from "react-konva";
+import { Stage, Layer, Rect, Text, Circle, Group, Arrow, Label, Tag } from "react-konva";
 import { Trajectory } from "@/models/Trajectory";
 import { TrajectoryMoment } from "@/models/ValueClustering";
 import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
 
 const ROW_HEIGHT = 44;
-const COL_WIDTH = 70;
+const MIN_COL_WIDTH = 70;
 const LABEL_WIDTH = 100;
 const HEADER_HEIGHT = 28;
 const CIRCLE_RADIUS = 10;
 const CIRCLE_GAP = 4;
+const CELL_MARGIN = 3;
 
 type HoverInfo = {
     x: number;
@@ -60,8 +61,17 @@ export default function BSVDrawingCanvas({
         isHighlighted(trajectoryId, turnId) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY;
     const [hovered, setHovered] = useState<HoverInfo | null>(null);
 
+    // Widen columns beyond the minimum so the cell with the most moments in it
+    // still fits them all without overflowing.
+    const spacing = CIRCLE_RADIUS * 2 + CIRCLE_GAP;
+    const maxMomentsPerCell = Math.max(
+        1,
+        ...values.flatMap((value) => columns.map((column) => getCellMoments(value, column).length)),
+    );
+    const colWidth = Math.max(MIN_COL_WIDTH, maxMomentsPerCell * spacing - CIRCLE_GAP + CELL_MARGIN * 2 + 8);
+
     const cellCenter = (rowIndex: number, colIndex: number) => ({
-        x: LABEL_WIDTH + colIndex * COL_WIDTH + COL_WIDTH / 2,
+        x: LABEL_WIDTH + colIndex * colWidth + colWidth / 2,
         y: HEADER_HEIGHT + rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2,
     });
 
@@ -73,7 +83,6 @@ export default function BSVDrawingCanvas({
             if (moments.length === 0) return;
 
             const { x: cx, y: cy } = cellCenter(rowIndex, colIndex);
-            const spacing = CIRCLE_RADIUS * 2 + CIRCLE_GAP;
             const totalWidth = moments.length * spacing - CIRCLE_GAP;
             moments.forEach((moment, i) => {
                 const x = cx - totalWidth / 2 + spacing * i + spacing / 2;
@@ -115,40 +124,23 @@ export default function BSVDrawingCanvas({
         return segments;
     });
 
-    const width = LABEL_WIDTH + columns.length * COL_WIDTH;
+    const width = LABEL_WIDTH + columns.length * colWidth;
     const height = HEADER_HEIGHT + values.length * ROW_HEIGHT;
 
     return (
         <Stage width={width} height={height}>
             <Layer>
-                {/* grid lines */}
-                {values.map((_, rowIndex) => (
-                    <Line
-                        key={`row-line-${rowIndex}`}
-                        points={[0, HEADER_HEIGHT + rowIndex * ROW_HEIGHT, width, HEADER_HEIGHT + rowIndex * ROW_HEIGHT]}
-                        stroke="#eee"
-                        strokeWidth={1}
-                    />
-                ))}
-                {columns.map((_, colIndex) => (
-                    <Line
-                        key={`col-line-${colIndex}`}
-                        points={[LABEL_WIDTH + colIndex * COL_WIDTH, 0, LABEL_WIDTH + colIndex * COL_WIDTH, height]}
-                        stroke="#eee"
-                        strokeWidth={1}
-                    />
-                ))}
-
                 {/* clickable cell areas: highlight every moment in this (value, column) combination */}
                 {values.map((value, rowIndex) =>
                     columns.map((column, colIndex) => (
                         <Rect
                             key={`cell-${rowIndex}-${colIndex}`}
-                            x={LABEL_WIDTH + colIndex * COL_WIDTH}
-                            y={HEADER_HEIGHT + rowIndex * ROW_HEIGHT}
-                            width={COL_WIDTH}
-                            height={ROW_HEIGHT}
-                            fill="transparent"
+                            x={LABEL_WIDTH + colIndex * colWidth + CELL_MARGIN}
+                            y={HEADER_HEIGHT + rowIndex * ROW_HEIGHT + CELL_MARGIN}
+                            width={colWidth - CELL_MARGIN * 2}
+                            height={ROW_HEIGHT - CELL_MARGIN * 2}
+                            fill="#eee"
+                            cornerRadius={10}
                             onClick={() => onCellClick?.(getCellMoments(value, column))}
                             onTap={() => onCellClick?.(getCellMoments(value, column))}
                             onMouseEnter={(e) => {
@@ -169,9 +161,9 @@ export default function BSVDrawingCanvas({
                     <Text
                         key={`col-header-${column}`}
                         text={columnLabel(column)}
-                        x={LABEL_WIDTH + colIndex * COL_WIDTH}
+                        x={LABEL_WIDTH + colIndex * colWidth}
                         y={6}
-                        width={COL_WIDTH}
+                        width={colWidth}
                         align="center"
                         fontSize={12}
                         fontStyle="bold"
