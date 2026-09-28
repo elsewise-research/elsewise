@@ -98,6 +98,25 @@ export default function TrajectoryViewer({
                     <p><b>Turn:</b> {currTrajectoryMoment.turnId}</p>
                     <p><i>{turn.summary}</i></p>
                     <div
+                        className="trajectory-turn-value-clustering"
+                        onClick={() => setIsValueClusteringExpanded((expanded) => !expanded)}
+                    >
+                        <b>Dimension Values</b>
+                        {isValueClusteringExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </div>
+                    {isValueClusteringExpanded && (
+                        <table className="trajectory-turn-values">
+                            <tbody>
+                                {assignedValues.map(({ dimensionId, dimensionName, value }) => (
+                                    <tr key={dimensionId}>
+                                        <td><b>{dimensionName}</b></td>
+                                        <td>{value ?? "unassigned"}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                    <div
                         className="trajectory-turn-detail"
                         onClick={() => setIsStepsExpanded((expanded) => !expanded)}
                     >
@@ -112,18 +131,6 @@ export default function TrajectoryViewer({
                             ) : (
                                 <p>{step.content.actionName}({JSON.stringify(step.content.actionArgs)})</p>
                             )}
-                        </div>
-                    ))}
-                    <div
-                        className="trajectory-turn-value-clustering"
-                        onClick={() => setIsValueClusteringExpanded((expanded) => !expanded)}
-                    >
-                        <b>Dimension Values</b>
-                        {isValueClusteringExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </div>
-                    {isValueClusteringExpanded && assignedValues.map(({ dimensionId, dimensionName, value }) => (
-                        <div key={dimensionId} className="trajectory-turn-values">
-                            <b>{dimensionName}</b>: {value ?? "unassigned"}
                         </div>
                     ))}
                 </div>

@@ -158,8 +158,20 @@
 
 
 .trajectory-turn-values {
-    padding-left: 20px;
+    margin-left: 20px;
+    border-collapse: separate;
+    border-spacing: 8px 5px;
     color:#888;
+}
+
+.trajectory-turn-values td {
+    width: 50%;
+    text-align: center;
+    background-color: #eee;
+    border-radius: 15px;
+    border-color: white;
+    font-size: 12px;
+
 }
 
 .trajectory-step {
