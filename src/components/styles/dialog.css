@@ -73,10 +73,46 @@
     color: #999;
 }
 
+.dialog-collapse-btn button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .dialog li {
     display: flex;
     gap: 8px;
     color: #333;
+}
+
+.dialog li.trajectory-legend-item {
+    flex-direction: column;
+}
+
+.trajectory-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.trajectory-turn-detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.trajectory-turn-summaries {
+    margin: 0;
+    padding-left: 20px;
+    color: #555;
+    font-size: 13px;
+}
+
+.turn-id {
+    display: inline-block;
+    min-width: 40px;
 }
 
 .dialog p {
@@ -85,4 +121,51 @@
 
 .dialog button {
     color: #555;
+}
+
+.trajectory-viewer-header {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+}
+
+
+.dialog .back-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border-width: 2px;
+    width: 24px;
+    height: 24px;
+}
+
+.dialog .back-link:hover {
+    cursor: pointer;
+}
+
+.trajectory-turn-detail {
+    color:#555;
+}
+
+.trajectory-turn-value-clustering {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: #555
+}
+
+
+.trajectory-turn-values {
+    padding-left: 20px;
+    color:#888;
+}
+
+.trajectory-step {
+    padding-left: 20px;
+}
+
+.trajectory-step p{
+    color: #888;
 }

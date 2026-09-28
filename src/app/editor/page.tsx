@@ -397,6 +397,8 @@ function Editor() {
               currTrajectoryMoment={currTrajectoryMoment}
               trajectories={workspace?.trajectories ?? []}
               trajectoryColorSetting={trajectoryColorSetting}
+              valueClusterings={workspace?.valueClusterings ?? []}
+              dimensions={workspace?.dimensions ?? []}
               onBackToOverview={() => setCurrTrajectoryMoment(undefined)}
             />
           </div>
