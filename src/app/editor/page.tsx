@@ -79,7 +79,18 @@ function Editor() {
     const [isAddDimensionOpen, setIsAddDimensionOpen] = useState(false);
     const [currTrajectoryMoment, setCurrTrajectoryMoment] = useState<TrajectoryMoment | undefined>(undefined);
     const [highlightedTrajectoryMoments, setHighlightedTrajectoryMoments] = useState<TrajectoryMoment[]>([]);
+    const [selectedTurnOrder, setSelectedTurnOrder] = useState<number | "all">("all");
     const { getIntersectingNodes } = useReactFlow();
+
+    // Every turn order (1-indexed position within a trajectory) that some trajectory
+    // actually has a turn at, sorted ascending.
+    const turnOrders = useMemo(() => {
+      const orders = new Set<number>();
+      for (const trajectory of workspace?.trajectories ?? []) {
+        trajectory.turns.forEach((_, index) => orders.add(index + 1));
+      }
+      return Array.from(orders).sort((a, b) => a - b);
+    }, [workspace?.trajectories]);
 
     const trajectoryColors = workspace?.settings?.trajectoryColors;
     const trajectoryColorSetting: Record<string, string> = useMemo(
@@ -255,6 +266,24 @@ function Editor() {
       setHighlightedTrajectoryMoments([]);
     };
 
+    // Highlight, for every trajectory, whichever single moment (if any) falls at the
+    // chosen turn order; "all" clears the filter back to nothing highlighted.
+    const handleTurnOrderChange = (turnOrder: number | "all") => {
+      setSelectedTurnOrder(turnOrder);
+
+      if (turnOrder === "all") {
+        setHighlightedTrajectoryMoments([]);
+        return;
+      }
+
+      const moments: TrajectoryMoment[] = [];
+      for (const trajectory of workspace?.trajectories ?? []) {
+        const turn = trajectory.turns[turnOrder - 1];
+        if (turn) moments.push({ trajectoryId: trajectory.id, turnId: turn.id });
+      }
+      setHighlightedTrajectoryMoments(moments);
+    };
+
     const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type !== "simpleBSV" && node.type !== "compositionalBSV") {
         setDropTargetId(null);
@@ -421,6 +450,20 @@ function Editor() {
           </div>
         </div>
           <div className={styles["action-bar"]}>
+              <div className={styles["turn-order-slider"]} title="highlight trajectory moments by turn order">
+                <span>{selectedTurnOrder === "all" ? "All" : `Turn ${selectedTurnOrder}`}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={turnOrders.length}
+                  step={1}
+                  value={selectedTurnOrder === "all" ? 0 : turnOrders.indexOf(selectedTurnOrder) + 1}
+                  onChange={(e) => {
+                    const sliderValue = Number(e.target.value);
+                    handleTurnOrderChange(sliderValue === 0 ? "all" : turnOrders[sliderValue - 1]);
+                  }}
+                />
+              </div>
               <button onClick={() => {handleAddDimension()}} title="add new dimension"><Plus size={16} /></button>
               <button onClick={() => {handleExtractDimension()}}title="exract dimensions from trajectories"><Sparkles size={16} /></button>
               <button onClick={() => {handleClearHighlightedTrajectoryMoment()}} title="clear highlighted trajectory moments" aria-label="clear highlighted trajectory moments">
