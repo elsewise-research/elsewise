@@ -8,7 +8,7 @@ import { ReactFlow,
   type Node,
   type NodeChange } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Download, Info, Plus, Sparkles, Group } from "lucide-react";
+import { Download, Info, Plus, Sparkles, Group, FilterX } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
 import { Dimension } from "@/models/Dimension";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
@@ -251,6 +251,10 @@ function Editor() {
       setHighlightedTrajectoryMoments(moments);
     };
 
+    const handleClearHighlightedTrajectoryMoment = () => {
+      setHighlightedTrajectoryMoments([]);
+    };
+
     const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type !== "simpleBSV" && node.type !== "compositionalBSV") {
         setDropTargetId(null);
@@ -417,8 +421,11 @@ function Editor() {
           </div>
         </div>
           <div className={styles["action-bar"]}>
-              <button onClick={() => {handleAddDimension()}}><Plus size={16} /></button>
-              <button onClick={() => {handleExtractDimension()}}><Sparkles size={16} /></button>
+              <button onClick={() => {handleAddDimension()}} title="add new dimension"><Plus size={16} /></button>
+              <button onClick={() => {handleExtractDimension()}}title="exract dimensions from trajectories"><Sparkles size={16} /></button>
+              <button onClick={() => {handleClearHighlightedTrajectoryMoment()}} title="clear highlighted trajectory moments" aria-label="clear highlighted trajectory moments">
+                <FilterX size={16} />
+              </button>
           </div>
           <div className={styles["trajectory-viewer"]}>
             <TrajectoryViewer
