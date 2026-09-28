@@ -166,7 +166,6 @@ export default function BSVDrawingCanvas({
                         width={colWidth}
                         align="center"
                         fontSize={12}
-                        fontStyle="bold"
                         fill="#777"
                     />
                 ))}
