@@ -112,6 +112,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
 
     return (
         <div className={`bsv-node${isDropTarget ? " bsv-node--drop-target" : ""}`}>
+            <div className="bsv-title">{dimensionName}</div>
             <div className="bsv-toolkit">
                 <button onClick={onToggleCompactView} title={compactView ? "Switch to expanded view" : "Switch to compact view"}>
                     {compactView ? <LayoutGrid size={16} /> : <Rows3 size={16} />}
@@ -123,7 +124,6 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                     <Trash2 size={16} />
                 </button>
             </div>
-            <div className="bsv-title">{dimensionName}</div>
             <div className="bsv-description">{dimensionDescription}</div>
             <div className="bsv-viz nodrag">
             {compactView ? (

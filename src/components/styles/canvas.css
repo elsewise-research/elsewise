@@ -27,7 +27,6 @@
 .bsv-title {
     color: #777;
     font-weight: bold;
-    margin-top: 18px;
 }
 
 .bsv-description {
@@ -91,10 +90,8 @@
     background-color: #eee;
     border-radius: 16px;
     color: #777;
-    position: absolute;
-    display: flex;
+    display: inline-flex;
     flex-direction: row;
     align-items: center;
     gap: 6px;
-
 }

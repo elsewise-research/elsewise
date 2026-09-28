@@ -79,6 +79,7 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
 
         return (
             <div className={`bsv-node${isDropTarget ? " bsv-node--drop-target" : ""}`}>
+                <div className="bsv-title">{dimensionNames.join(" × ")}</div>
                 <div className="bsv-toolkit">
                     {isMatrixViewEligible && (
                         <button onClick={onToggleMatrixView} title={showMatrixView ? "Switch to state machine view" : "Switch to matrix view"}>
@@ -89,7 +90,6 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                         <Trash2 size={16} />
                     </button>
                 </div>
-                <div className="bsv-title">{dimensionNames.join(" × ")}</div>
                 <div className="bsv-description">
                     {dimensionNames.map((name, index) => (
                         <span key={name}>

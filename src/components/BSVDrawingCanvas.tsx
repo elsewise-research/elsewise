@@ -8,7 +8,7 @@ import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
 const ROW_HEIGHT = 44;
 const MIN_COL_WIDTH = 70;
 const LABEL_WIDTH = 100;
-const HEADER_HEIGHT = 28;
+const HEADER_HEIGHT = 40;
 const CIRCLE_RADIUS = 10;
 const CIRCLE_GAP = 4;
 const CELL_MARGIN = 3;
