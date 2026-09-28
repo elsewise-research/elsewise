@@ -88,6 +88,8 @@
 }
 
 .bsv-toolkit {
+    background-color: #eee;
+    border-radius: 16px;
     color: #777;
     position: absolute;
     display: flex;

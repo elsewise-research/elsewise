@@ -180,6 +180,7 @@
     border-radius: 16px;
     font-size: 12px;
     margin: 10px;
+    overflow-x: hidden;
 }
 
 .trajectory-step p{
