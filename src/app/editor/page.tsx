@@ -78,6 +78,7 @@ function Editor() {
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [isAddDimensionOpen, setIsAddDimensionOpen] = useState(false);
     const [currTrajectoryMoment, setCurrTrajectoryMoment] = useState<TrajectoryMoment | undefined>(undefined);
+    const [highlightedTrajectoryMoments, setHighlightedTrajectoryMoments] = useState<TrajectoryMoment[]>([]);
     const { getIntersectingNodes } = useReactFlow();
 
     const trajectoryColors = workspace?.settings?.trajectoryColors;
@@ -323,6 +324,7 @@ function Editor() {
               onDelete: () => handleDeleteDimension(dimensionId),
               onValueCluster: () => handleDimensionValueCluster([dimensionId]),
               onMomentClick: (moment: TrajectoryMoment) => setCurrTrajectoryMoment(moment),
+              highlightedTrajectoryMoments,
             },
           };
         });
@@ -350,6 +352,7 @@ function Editor() {
               onToggleMatrixView: () => handleToggleMatrixView(dimensionIdsKey),
               onDelete: () => handleDeleteValueClustering(valueClustering.dimensionIds),
               onMomentClick: (moment: TrajectoryMoment) => setCurrTrajectoryMoment(moment),
+              highlightedTrajectoryMoments,
             },
           };
         });
@@ -372,6 +375,12 @@ function Editor() {
         current.map((n) => ({ ...n, data: { ...n.data, currTrajectoryMoment } })),
       );
     }, [currTrajectoryMoment]);
+
+    useEffect(() => {
+      setNodes((current) =>
+        current.map((n) => ({ ...n, data: { ...n.data, highlightedTrajectoryMoments } })),
+      );
+    }, [highlightedTrajectoryMoments]);
 
     return (
       <>

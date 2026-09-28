@@ -3,6 +3,7 @@ import { Rows3, LayoutGrid, Trash2, Group } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
+import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
 
 import "./styles/canvas.css"
 
@@ -21,6 +22,7 @@ type simpleBSVData = {
     onValueCluster : () => void;
     onMomentClick : (moment: TrajectoryMoment) => void;
     currTrajectoryMoment? : TrajectoryMoment;
+    highlightedTrajectoryMoments? : TrajectoryMoment[];
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
@@ -37,6 +39,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         onValueCluster,
         onMomentClick,
         currTrajectoryMoment,
+        highlightedTrajectoryMoments = [],
         isDropTarget} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
@@ -68,11 +71,22 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         currTrajectoryMoment?.trajectoryId === moment.trajectoryId
         && currTrajectoryMoment?.turnId === moment.turnId;
 
+    // With nothing highlighted, every moment shows at full opacity; once something is
+    // highlighted, only members of that set stay at full opacity and the rest dim.
+    const isHighlighted = (moment: TrajectoryMoment) =>
+        highlightedTrajectoryMoments.length === 0
+        || highlightedTrajectoryMoments.some(
+            (highlighted) => highlighted.trajectoryId === moment.trajectoryId && highlighted.turnId === moment.turnId,
+        );
+
     const renderMoment = (moment: TrajectoryMoment) => (
         <span
             key={`${moment.trajectoryId}-${moment.turnId}`}
             className={`trajectory-moment-markor${isCurrTrajectoryMoment(moment) ? " trajectory-moment-markor--current" : ""}`}
-            style={{ backgroundColor: trajectoryColorSetting[moment.trajectoryId] }}
+            style={{
+                backgroundColor: trajectoryColorSetting[moment.trajectoryId],
+                opacity: isHighlighted(moment) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY,
+            }}
             title={`trajectoryId: ${moment.trajectoryId}\nturnId: ${moment.turnId}`}
             onClick={() => onMomentClick(moment)}
         >
@@ -135,6 +149,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                     getTurnOrder={getTurnOrder}
                     onMomentClick={onMomentClick}
                     currTrajectoryMoment={currTrajectoryMoment}
+                    highlightedTrajectoryMoments={highlightedTrajectoryMoments}
                 />
             )}
             </div>

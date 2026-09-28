@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Stage, Layer, Line, Text, Circle, Group, Arrow, Label, Tag } from "react-konva";
 import { Trajectory } from "@/models/Trajectory";
 import { TrajectoryMoment } from "@/models/ValueClustering";
+import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
 
 const ROW_HEIGHT = 44;
 const COL_WIDTH = 70;
@@ -29,6 +30,7 @@ type Props = {
     showArrows?: boolean;
     onMomentClick?: (moment: TrajectoryMoment) => void;
     currTrajectoryMoment?: TrajectoryMoment;
+    highlightedTrajectoryMoments?: TrajectoryMoment[];
 };
 
 export default function BSVDrawingCanvas({
@@ -42,7 +44,15 @@ export default function BSVDrawingCanvas({
     showArrows = true,
     onMomentClick,
     currTrajectoryMoment,
+    highlightedTrajectoryMoments = [],
 }: Props) {
+    // With nothing highlighted, every moment shows at full opacity; once something is
+    // highlighted, only members of that set stay at full opacity and the rest dim.
+    const isHighlighted = (trajectoryId: string, turnId: string) =>
+        highlightedTrajectoryMoments.length === 0
+        || highlightedTrajectoryMoments.some(
+            (highlighted) => highlighted.trajectoryId === trajectoryId && highlighted.turnId === turnId,
+        );
     const [hovered, setHovered] = useState<HoverInfo | null>(null);
 
     const cellCenter = (rowIndex: number, colIndex: number) => ({
@@ -173,6 +183,7 @@ export default function BSVDrawingCanvas({
                             key={key}
                             x={pos.x}
                             y={pos.y}
+                            opacity={isHighlighted(trajectoryId, turnId) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY}
                             onClick={() => onMomentClick?.({ trajectoryId, turnId })}
                             onTap={() => onMomentClick?.({ trajectoryId, turnId })}
                             onMouseEnter={(e) => {
@@ -197,7 +208,6 @@ export default function BSVDrawingCanvas({
                                         : undefined
                                 }
                                 strokeWidth={2}
-                                opacity={0.6}
                             />
                             <Text
                                 text={order !== undefined ? String(order) : ""}
