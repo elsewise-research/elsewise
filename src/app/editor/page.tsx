@@ -245,6 +245,12 @@ function Editor() {
       );
     };
 
+    // Highlight every moment sharing the same dimension value combination as the clicked cell,
+    // leaving whichever single moment (if any) was previously selected untouched.
+    const handleCellClick = (moments: TrajectoryMoment[]) => {
+      setHighlightedTrajectoryMoments(moments);
+    };
+
     const handleNodeDrag = (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type !== "simpleBSV" && node.type !== "compositionalBSV") {
         setDropTargetId(null);
@@ -335,6 +341,7 @@ function Editor() {
               onDelete: () => handleDeleteDimension(dimensionId),
               onValueCluster: () => handleDimensionValueCluster([dimensionId]),
               onMomentClick: handleMomentClick,
+              onCellClick: handleCellClick,
               highlightedTrajectoryMoments,
             },
           };
@@ -363,6 +370,7 @@ function Editor() {
               onToggleMatrixView: () => handleToggleMatrixView(dimensionIdsKey),
               onDelete: () => handleDeleteValueClustering(valueClustering.dimensionIds),
               onMomentClick: handleMomentClick,
+              onCellClick: handleCellClick,
               highlightedTrajectoryMoments,
             },
           };

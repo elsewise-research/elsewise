@@ -1,6 +1,6 @@
 'use client';
 import { useState } from "react";
-import { Stage, Layer, Line, Text, Circle, Group, Arrow, Label, Tag } from "react-konva";
+import { Stage, Layer, Line, Rect, Text, Circle, Group, Arrow, Label, Tag } from "react-konva";
 import { Trajectory } from "@/models/Trajectory";
 import { TrajectoryMoment } from "@/models/ValueClustering";
 import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
@@ -29,6 +29,7 @@ type Props = {
     columnLabel?: (column: string) => string;
     showArrows?: boolean;
     onMomentClick?: (moment: TrajectoryMoment) => void;
+    onCellClick?: (moments: TrajectoryMoment[]) => void;
     currTrajectoryMoment?: TrajectoryMoment;
     highlightedTrajectoryMoments?: TrajectoryMoment[];
 };
@@ -43,6 +44,7 @@ export default function BSVDrawingCanvas({
     columnLabel = (column) => column,
     showArrows = true,
     onMomentClick,
+    onCellClick,
     currTrajectoryMoment,
     highlightedTrajectoryMoments = [],
 }: Props) {
@@ -136,6 +138,30 @@ export default function BSVDrawingCanvas({
                         strokeWidth={1}
                     />
                 ))}
+
+                {/* clickable cell areas: highlight every moment in this (value, column) combination */}
+                {values.map((value, rowIndex) =>
+                    columns.map((column, colIndex) => (
+                        <Rect
+                            key={`cell-${rowIndex}-${colIndex}`}
+                            x={LABEL_WIDTH + colIndex * COL_WIDTH}
+                            y={HEADER_HEIGHT + rowIndex * ROW_HEIGHT}
+                            width={COL_WIDTH}
+                            height={ROW_HEIGHT}
+                            fill="transparent"
+                            onClick={() => onCellClick?.(getCellMoments(value, column))}
+                            onTap={() => onCellClick?.(getCellMoments(value, column))}
+                            onMouseEnter={(e) => {
+                                const stage = e.target.getStage();
+                                if (stage) stage.container().style.cursor = "pointer";
+                            }}
+                            onMouseLeave={(e) => {
+                                const stage = e.target.getStage();
+                                if (stage) stage.container().style.cursor = "default";
+                            }}
+                        />
+                    )),
+                )}
 
                 {/* headers */}
                 <Text text="Value" x={8} y={6} fontSize={12} fontStyle="bold" fill="#777" />

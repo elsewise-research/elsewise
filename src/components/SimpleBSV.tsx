@@ -21,6 +21,7 @@ type simpleBSVData = {
     onDelete : () => void;
     onValueCluster : () => void;
     onMomentClick : (moment: TrajectoryMoment) => void;
+    onCellClick : (moments: TrajectoryMoment[]) => void;
     currTrajectoryMoment? : TrajectoryMoment;
     highlightedTrajectoryMoments? : TrajectoryMoment[];
 }
@@ -38,6 +39,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         onDelete,
         onValueCluster,
         onMomentClick,
+        onCellClick,
         currTrajectoryMoment,
         highlightedTrajectoryMoments = [],
         isDropTarget} = data;
@@ -88,7 +90,12 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                 opacity: isHighlighted(moment) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY,
             }}
             title={`trajectoryId: ${moment.trajectoryId}\nturnId: ${moment.turnId}`}
-            onClick={() => onMomentClick(moment)}
+            onClick={(e) => {
+                // Prevent bubbling to the containing cell's onClick, which would
+                // otherwise immediately override this moment-scoped highlight.
+                e.stopPropagation();
+                onMomentClick(moment);
+            }}
         >
             {getTurnOrder(moment)}
         </span>
@@ -124,7 +131,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                     <tbody>
                         {Object.entries(valueClustering.valueMapping).map(([value, moments]) => (
                             <tr key={value}>
-                                <td className="bsv-value-clustering">
+                                <td className="bsv-value-clustering" onClick={() => onCellClick(moments)}>
                                 <p>{value}</p>
                                 <div className="bsv-moments">
                                     {moments.map(renderMoment)}
@@ -148,6 +155,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                     trajectoryColorSetting={trajectoryColorSetting}
                     getTurnOrder={getTurnOrder}
                     onMomentClick={onMomentClick}
+                    onCellClick={onCellClick}
                     currTrajectoryMoment={currTrajectoryMoment}
                     highlightedTrajectoryMoments={highlightedTrajectoryMoments}
                 />

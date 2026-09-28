@@ -20,9 +20,10 @@ type SimLink = SimulationLinkDatum<SimNode>;
 type Props = {
     valueClustering: ValueClustering;
     trajectories: Trajectory[];
+    onCellClick?: (moments: TrajectoryMoment[]) => void;
 };
 
-export default function BSVStateMachineCanvas({ valueClustering, trajectories }: Props) {
+export default function BSVStateMachineCanvas({ valueClustering, trajectories, onCellClick }: Props) {
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
     const { nodes, links } = useMemo(() => {
@@ -166,6 +167,8 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories }:
                         key={node.id}
                         x={node.x}
                         y={node.y}
+                        onClick={() => onCellClick?.(valueClustering.valueMapping[node.id] ?? [])}
+                        onTap={() => onCellClick?.(valueClustering.valueMapping[node.id] ?? [])}
                         onMouseEnter={(e) => {
                             const stage = e.target.getStage();
                             if (stage) stage.container().style.cursor = "pointer";
