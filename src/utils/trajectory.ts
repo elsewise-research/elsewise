@@ -2,6 +2,10 @@ import { Trajectory } from "@/models/Trajectory";
 import { Workspace } from "@/models/Workspace";
 import { randomColor } from "@/utils/color";
 
+export function processTrajectoriesText(text: string): { trajectories: Trajectory[] } {
+    return JSON.parse(text);
+}
+
 export function summarizeTrajectories(trajectories: Trajectory[]) {
     return trajectories.map((trajectory) => ({
         id: trajectory.id,
