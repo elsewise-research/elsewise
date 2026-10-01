@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState, useRef } from "react";
+import { useParams } from "next/navigation";
 import Image from "next/image";
 import { ReactFlow,
   ReactFlowProvider,
@@ -8,18 +9,18 @@ import { ReactFlow,
   type Node,
   type NodeChange } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Download, Info, Plus, Sparkles, Group, FilterX } from "lucide-react";
+import { Download, Info, Plug, Plus, Sparkles, Group, FilterX } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
 import { Dimension } from "@/models/Dimension";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
-import { loadWorkspace, saveWorkspace } from "@/utils/workspaceStorage";
 import { appendDimension, crossDimensions, deleteDimension, deleteValueClustering } from "@/utils/dimension";
-import { callApi } from "@/app/apis/api";
-import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType, ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType } from "@/app/apis/types";
+import { callApi, getApi } from "@/app/apis/api";
+import { ExtractDimensionInputType, ExtractDimensionOutputType, DimensionValueClusterInputType, DimensionValueClusterOutputType, ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType, GetWorkspaceOutputType, ReplaceWorkspaceInputType, ReplaceWorkspaceOutputType } from "@/app/apis/types";
 import SimpleBSV from "@/components/SimpleBSV";
 import CompositionalBSV from "@/components/CompositionalBSV";
 import TrajectoryViewer  from "@/components/TrajectoryViewer";
 import AddDimensionDialog, { type AddDimensionInput } from "@/components/dialogs/AddDimensionDialog";
+import IngestionCredentialDialog from "@/components/dialogs/IngestionCredentialDialog";
 import icon from "@/app/icon.png";
 import styles from "./editor.module.css";
 
@@ -72,7 +73,10 @@ async function clusterDimensionValues(workspace: Workspace, dimensionIds?: strin
 }
 
 function Editor() {
+    const { id } = useParams<{ id: string }>();
     const [workspace, setWorkspace] = useState<Workspace | null>(null);
+    const [ingestionToken, setIngestionToken] = useState<string | null>(null);
+    const [isIngestionDialogOpen, setIsIngestionDialogOpen] = useState(false);
     const reactFlowWrapper = useRef(null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -81,6 +85,18 @@ function Editor() {
     const [highlightedTrajectoryMoments, setHighlightedTrajectoryMoments] = useState<TrajectoryMoment[]>([]);
     const [selectedTurnOrder, setSelectedTurnOrder] = useState<number | "all">("all");
     const { getIntersectingNodes } = useReactFlow();
+
+    // Fire-and-forget persistence to the server-side workspace row. The server always
+    // preserves the stored `trajectories` regardless of what's sent here, so an editor
+    // tab with a stale in-memory snapshot can never clobber trajectories an external
+    // tool pushed in the meantime.
+    const persistWorkspace = (updatedWorkspace: Workspace) => {
+      callApi<ReplaceWorkspaceInputType, ReplaceWorkspaceOutputType>(
+        `/apis/Workspace/${id}`,
+        { workspace: updatedWorkspace },
+        "PUT",
+      ).catch((err) => console.error("Failed to save workspace", err));
+    };
 
     // Every turn order (1-indexed position within a trajectory) that some trajectory
     // actually has a turn at, sorted ascending.
@@ -134,7 +150,7 @@ function Editor() {
 
       const updatedWorkspace = appendDimension(workspace, dimension);
       setWorkspace(updatedWorkspace);
-      saveWorkspace(updatedWorkspace);
+      persistWorkspace(updatedWorkspace);
     };
 
     const handleExtractDimension = async () => {
@@ -160,7 +176,7 @@ function Editor() {
         result.dimensions.map((dimension) => dimension.id),
       );
       setWorkspace(updatedWorkspace);
-      saveWorkspace(updatedWorkspace);
+      persistWorkspace(updatedWorkspace);
     };
 
     const handleDimensionValueCluster = async (dimensionIds?: string[]) => {
@@ -168,7 +184,7 @@ function Editor() {
 
       const updatedWorkspace = await clusterDimensionValues(workspace, dimensionIds);
       setWorkspace(updatedWorkspace);
-      saveWorkspace(updatedWorkspace);
+      persistWorkspace(updatedWorkspace);
     };
 
     const handleDownloadWorkspace = () => {
@@ -201,7 +217,7 @@ function Editor() {
           ...prev,
           settings: { ...prev.settings, compactView },
         };
-        saveWorkspace(updatedWorkspace);
+        persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
       });
     };
@@ -220,7 +236,7 @@ function Editor() {
           ...prev,
           settings: { ...prev.settings, matrixView },
         };
-        saveWorkspace(updatedWorkspace);
+        persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
       });
     };
@@ -230,7 +246,7 @@ function Editor() {
         if (!prev) return prev;
 
         const updatedWorkspace = deleteDimension(prev, dimensionId);
-        saveWorkspace(updatedWorkspace);
+        persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
       });
     };
@@ -240,7 +256,7 @@ function Editor() {
         if (!prev) return prev;
 
         const updatedWorkspace = deleteValueClustering(prev, dimensionIds);
-        saveWorkspace(updatedWorkspace);
+        persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
       });
     };
@@ -315,7 +331,7 @@ function Editor() {
         const valueClusterings = crossDimensions(prev.valueClusterings ?? [], vcA, vcB);
 
         const updatedWorkspace: Workspace = { ...prev, valueClusterings };
-        saveWorkspace(updatedWorkspace);
+        persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
       });
     };
@@ -342,14 +358,18 @@ function Editor() {
           ...prev,
           settings: { ...prev.settings, nodePosition },
         };
-        saveWorkspace(updatedWorkspace);
+        persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
       });
     };
 
     useEffect(() => {
-      setWorkspace(loadWorkspace());
-    }, []);
+      if (!id) return;
+      getApi<GetWorkspaceOutputType>(`/apis/Workspace/${id}`).then((result) => {
+        setWorkspace(result.workspace);
+        setIngestionToken(result.ingestionToken);
+      });
+    }, [id]);
 
     useEffect(() => {
       const simpleNodes = (workspace?.valueClusterings ?? [])
@@ -441,6 +461,9 @@ function Editor() {
           <Image src={icon} alt="" className={styles["logo"]} />
           <h1>ELSEWISE</h1>
           <div className={styles["header-toolbar"]}>
+          <button onClick={() => {setIsIngestionDialogOpen(true)}} title="push trajectories from an external tool" aria-label="push trajectories from an external tool" disabled={!ingestionToken}>
+            <Plug size={16} />
+          </button>
           <button onClick={() => {handleDownloadWorkspace()}} title="download current workspace" aria-label="download current workspace">
             <Download size={16} />
           </button>
@@ -489,6 +512,13 @@ function Editor() {
           <AddDimensionDialog
             onSubmit={handleSubmitAddDimension}
             onCancel={() => setIsAddDimensionOpen(false)}
+          />
+        )}
+        {isIngestionDialogOpen && ingestionToken && (
+          <IngestionCredentialDialog
+            workspaceId={id}
+            ingestionToken={ingestionToken}
+            onCancel={() => setIsIngestionDialogOpen(false)}
           />
         )}
       </>

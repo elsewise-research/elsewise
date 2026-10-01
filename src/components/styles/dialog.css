@@ -24,6 +24,7 @@
     margin: 0;
     font-size: 16px;
     color: #333;
+    font-weight: bold;
 }
 
 .dialog label {
@@ -32,6 +33,14 @@
     gap: 4px;
     font-size: 13px;
     color: #555;
+}
+
+.dialog button {
+    border: #555 solid 1px; 
+}
+
+.dialog p {
+    font-size: 14px;
 }
 
 .dialog input,

@@ -1,7 +1,8 @@
 'use client';
 import React, { useState } from "react";
 import { Workspace } from "@/models/Workspace";
-import { saveWorkspace } from "@/utils/workspaceStorage";
+import { callApi } from "@/app/apis/api";
+import { CreateWorkspaceInputType, CreateWorkspaceOutputType } from "@/app/apis/types";
 import { ensureTrajectoryColors, processTrajectoriesText } from "@/utils/trajectory";
 
 function WorkspaceSetupView({}) {
@@ -10,11 +11,19 @@ function WorkspaceSetupView({}) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
+    const createWorkspaceAndNavigate = async (workspace: Workspace) => {
+        const { id } = await callApi<CreateWorkspaceInputType, CreateWorkspaceOutputType>(
+          "/apis/Workspace",
+          { workspace },
+        );
+        window.location.href = `/editor/${id}`;
+    };
+
     const handleTrajectoriesFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setTrajectoryFile(e.target.files?.[0] ?? null);
         setError("");
       };
-    
+
     const handleUploadTrajectories = async () => {
         if (!trajectoryFile) {
           setError("Please select a file.");
@@ -30,10 +39,7 @@ function WorkspaceSetupView({}) {
             trajectories,
           });
 
-          saveWorkspace(workspace);
-
-          // Nevigate to main editor view now that the workspace is persisted
-          window.location.href = "/editor";
+          await createWorkspaceAndNavigate(workspace);
 
         } catch (err) {
           setError("Error: " + (err instanceof Error ? err.message : String(err)));
@@ -57,10 +63,7 @@ function WorkspaceSetupView({}) {
           const text = await workspaceFile.text();
           const workspace: Workspace = ensureTrajectoryColors(JSON.parse(text));
 
-          saveWorkspace(workspace);
-
-          // Nevigate to main editor view now that the workspace is restored
-          window.location.href = "/editor";
+          await createWorkspaceAndNavigate(workspace);
 
         } catch (err) {
           setError("Error: " + (err instanceof Error ? err.message : String(err)));

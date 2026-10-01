@@ -78,7 +78,7 @@ export default function TrajectoryViewer({
             </button>
         </div>
       <div className="trajectory-viewer-header">
-        <h2><b>Trajectory Viewer</b></h2>
+        <h2>Trajectory Viewer</h2>
         {currTrajectoryMoment && !isCollapsed && (
             <button className="back-link" onClick={onBackToOverview}><ArrowLeft size={14} /></button>
         )}

@@ -1,6 +1,7 @@
 import { Trajectory } from "@/models/Trajectory";
 import { Dimension } from "@/models/Dimension";
 import { ValueClustering } from "@/models/ValueClustering";
+import { Workspace } from "@/models/Workspace";
 
 export type ExtractDimensionInputType = {
     trajectories : Trajectory[];
@@ -36,4 +37,39 @@ export type ExtractDimensionValuesInputType = {
 export type ExtractDimensionValuesOutputType = {
     dimensions : Dimension[];
     valueClusterings : ValueClustering[];
+};
+
+export type CreateWorkspaceInputType = {
+    workspace : Workspace;
+};
+
+export type CreateWorkspaceOutputType = {
+    id : string;
+    ingestionToken : string;
+    workspace : Workspace;
+};
+
+export type GetWorkspaceOutputType = {
+    id : string;
+    ingestionToken : string;
+    workspace : Workspace;
+};
+
+export type ReplaceWorkspaceInputType = {
+    workspace : Workspace;
+};
+
+export type ReplaceWorkspaceOutputType = {
+    id : string;
+    workspace : Workspace;
+};
+
+export type AppendTrajectoriesInputType = {
+    trajectories : Trajectory[];
+};
+
+export type AppendTrajectoriesOutputType = {
+    id : string;
+    workspace : Workspace;
+    appendedCount : number;
 };
