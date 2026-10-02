@@ -27,9 +27,9 @@ export function getRequestId(request?: Request): string {
 }
 
 const DEFAULT_API_OPTIONS: ApiOptions = {
-  model: 'claude-sonnet-5',
+  model: 'claude-haiku-4-5-20251001',
   temperature: 0.8,
-  maxTokens: 1000,
+  maxTokens: 32500,
 };
 
 /**
