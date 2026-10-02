@@ -198,6 +198,7 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
                             offsetY={NODE_RADIUS}
                             align="center"
                             verticalAlign="middle"
+                            opacity={opacityFor(node.count)}
                         />
                         <Text
                             text={node.id.split(DIMENSION_VALUE_SEPARATOR).join(", ")}
