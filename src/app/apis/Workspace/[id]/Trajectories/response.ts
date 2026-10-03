@@ -13,13 +13,10 @@ export async function appendTrajectories(
     const tokenOk = await repo.verifyIngestionToken(input.id, input.token);
     if (!tokenOk) throw new UnauthorizedError("Invalid or missing ingestion token");
 
-    const existing = await repo.getById(input.id);
-    if (!existing) throw new UnauthorizedError("Invalid or missing ingestion token");
+    validateTrajectoriesShape(input.trajectories);
 
-    validateTrajectoriesShape(input.trajectories, existing.workspace.trajectories ?? []);
+    const result = await repo.appendTrajectoryBatch(input.id, input.trajectories);
+    if (!result) throw new NotFoundError(`Workspace ${input.id} not found`);
 
-    const record = await repo.appendTrajectories(input.id, input.trajectories);
-    if (!record) throw new NotFoundError(`Workspace ${input.id} not found`);
-
-    return { id: record.id, workspace: record.workspace, appendedCount: input.trajectories.length };
+    return { id: input.id, batch: result.batch, appendedCount: input.trajectories.length };
 }

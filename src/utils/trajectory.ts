@@ -16,10 +16,9 @@ export function summarizeTrajectories(trajectories: Trajectory[]) {
     }));
 }
 
-// Ensures every trajectory in the workspace has a color assigned in settings.trajectoryColors,
+// Ensures every given trajectory has a color assigned in settings.trajectoryColors,
 // assigning a random color to any trajectory that is missing one.
-export function ensureTrajectoryColors(workspace: Workspace): Workspace {
-    const trajectories = workspace.trajectories ?? [];
+export function ensureTrajectoryColors(workspace: Workspace, trajectories: Trajectory[]): Workspace {
     const existingColors = workspace.settings?.trajectoryColors ?? {};
 
     const missingTrajectories = trajectories.filter((trajectory) => !existingColors[trajectory.id]);

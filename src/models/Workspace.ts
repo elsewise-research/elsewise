@@ -1,13 +1,9 @@
-import { Trajectory } from "./Trajectory";
 import { Dimension, DimensionId } from "./Dimension";
-import { ValueClustering } from "./ValueClustering";
 
 export type Workspace = {
     title?: string;
     domainDescription?: string;
-    trajectories?: Trajectory[];
     dimensions?: Dimension[];
-    valueClusterings?: ValueClustering[];
     settings?: WorkspaceSetting;
 };
 

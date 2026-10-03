@@ -1,5 +1,7 @@
 import { Workspace } from "@/models/Workspace";
 import { Trajectory } from "@/models/Trajectory";
+import { ValueClustering } from "@/models/ValueClustering";
+import { Batch, BatchData } from "@/models/Batch";
 
 export type StoredWorkspaceRecord = {
     id: string;
@@ -10,12 +12,18 @@ export type StoredWorkspaceRecord = {
 };
 
 export interface WorkspaceRepository {
-    create(workspace: Workspace): Promise<StoredWorkspaceRecord>;
+    create(workspace: Workspace, trajectories: Trajectory[]): Promise<{ record: StoredWorkspaceRecord; batch: Batch }>;
     getById(id: string): Promise<StoredWorkspaceRecord | null>;
-    // Replaces everything except `trajectories`, which is always preserved as-is from
-    // the stored record — keeps a stale editor snapshot from ever being able to wipe out
-    // trajectories an external tool appended after that snapshot was loaded.
+    listBatches(workspaceId: string): Promise<Batch[]>;
+    // Replaces workspace metadata (title, domainDescription, dimensions, settings). Trajectories
+    // and value clusterings aren't part of this anymore — they live in their own per-batch rows.
     replace(id: string, workspace: Workspace): Promise<StoredWorkspaceRecord | null>;
-    appendTrajectories(id: string, trajectories: Trajectory[]): Promise<StoredWorkspaceRecord | null>;
+    getBatchData(workspaceId: string, batchId: string): Promise<BatchData | null>;
+    replaceBatchValueClusterings(
+        workspaceId: string,
+        batchId: string,
+        valueClusterings: ValueClustering[],
+    ): Promise<BatchData | null>;
+    appendTrajectoryBatch(workspaceId: string, trajectories: Trajectory[]): Promise<{ batch: Batch; data: BatchData } | null>;
     verifyIngestionToken(id: string, token: string): Promise<boolean>;
 }

@@ -7,8 +7,9 @@ export async function getWorkspace(input: { id: string }): Promise<GetWorkspaceO
     const repo = getWorkspaceRepository();
     const record = await repo.getById(input.id);
     if (!record) throw new NotFoundError(`Workspace ${input.id} not found`);
+    const batches = await repo.listBatches(input.id);
 
-    return { id: record.id, ingestionToken: record.ingestionToken, workspace: record.workspace };
+    return { id: record.id, ingestionToken: record.ingestionToken, workspace: record.workspace, batches };
 }
 
 export async function replaceWorkspace(

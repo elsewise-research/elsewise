@@ -1,23 +1,35 @@
 'use client';
 import React, { useState } from "react";
 import { Workspace } from "@/models/Workspace";
+import { Trajectory } from "@/models/Trajectory";
+import { Batch, BatchData } from "@/models/Batch";
 import { callApi } from "@/app/apis/api";
-import { CreateWorkspaceInputType, CreateWorkspaceOutputType } from "@/app/apis/types";
-import { ensureTrajectoryColors, processTrajectoriesText } from "@/utils/trajectory";
+import {
+  CreateWorkspaceInputType,
+  CreateWorkspaceOutputType,
+  ReplaceBatchValueClusteringsInputType,
+  ReplaceBatchValueClusteringsOutputType,
+  AppendTrajectoriesOutputType,
+} from "@/app/apis/types";
+import { processTrajectoriesText } from "@/utils/trajectory";
+
+// The ingestion endpoint is Bearer-token authed, which callApi doesn't support headers for,
+// so this one call is made directly rather than through the shared helper.
+async function pushBatch(workspaceId: string, token: string, trajectories: Trajectory[]): Promise<AppendTrajectoriesOutputType> {
+  const response = await fetch(`/apis/Workspace/${workspaceId}/Trajectories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ trajectories }),
+  });
+  if (!response.ok) throw new Error(`Failed to push batch: ${response.status}`);
+  return response.json();
+}
 
 function WorkspaceSetupView({}) {
     const [trajectoryFile, setTrajectoryFile] = useState<File | null>(null);
     const [workspaceFile, setWorkspaceFile] = useState<File | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-
-    const createWorkspaceAndNavigate = async (workspace: Workspace) => {
-        const { id } = await callApi<CreateWorkspaceInputType, CreateWorkspaceOutputType>(
-          "/apis/Workspace",
-          { workspace },
-        );
-        window.location.href = `/editor/${id}`;
-    };
 
     const handleTrajectoriesFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setTrajectoryFile(e.target.files?.[0] ?? null);
@@ -35,11 +47,11 @@ function WorkspaceSetupView({}) {
           const text = await trajectoryFile.text();
           const { trajectories } = processTrajectoriesText(text);
 
-          const workspace: Workspace = ensureTrajectoryColors({
-            trajectories,
-          });
-
-          await createWorkspaceAndNavigate(workspace);
+          const { id } = await callApi<CreateWorkspaceInputType, CreateWorkspaceOutputType>(
+            "/apis/Workspace",
+            { workspace: {}, trajectories },
+          );
+          window.location.href = `/editor/${id}`;
 
         } catch (err) {
           setError("Error: " + (err instanceof Error ? err.message : String(err)));
@@ -52,6 +64,10 @@ function WorkspaceSetupView({}) {
         setError("");
       };
 
+    // Restores a workspace previously downloaded from the editor, which bundles every
+    // batch's data alongside the workspace metadata (see handleDownloadWorkspace). The first
+    // batch seeds workspace creation; every later batch is replayed through the same
+    // ingestion path a real push would use.
     const handleUploadWorkspace = async () => {
         if (!workspaceFile) {
           setError("Please select a file.");
@@ -61,9 +77,36 @@ function WorkspaceSetupView({}) {
         setError("");
         try {
           const text = await workspaceFile.text();
-          const workspace: Workspace = ensureTrajectoryColors(JSON.parse(text));
+          const exported = JSON.parse(text) as {
+            workspace: Workspace;
+            batches: { batch: Batch; data: BatchData }[];
+          };
+          if (!exported.batches?.length) {
+            throw new Error("Exported workspace file has no batches");
+          }
 
-          await createWorkspaceAndNavigate(workspace);
+          const [firstBatch, ...restBatches] = exported.batches;
+          const created = await callApi<CreateWorkspaceInputType, CreateWorkspaceOutputType>(
+            "/apis/Workspace",
+            { workspace: exported.workspace, trajectories: firstBatch.data.trajectories },
+          );
+
+          await callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
+            `/apis/Workspace/${created.id}/Batches/${created.batches[0].id}/ValueClusterings`,
+            { valueClusterings: firstBatch.data.valueClusterings },
+            "PUT",
+          );
+
+          for (const { data } of restBatches) {
+            const pushed = await pushBatch(created.id, created.ingestionToken, data.trajectories);
+            await callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
+              `/apis/Workspace/${created.id}/Batches/${pushed.batch.id}/ValueClusterings`,
+              { valueClusterings: data.valueClusterings },
+              "PUT",
+            );
+          }
+
+          window.location.href = `/editor/${created.id}`;
 
         } catch (err) {
           setError("Error: " + (err instanceof Error ? err.message : String(err)));

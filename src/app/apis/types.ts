@@ -2,6 +2,7 @@ import { Trajectory } from "@/models/Trajectory";
 import { Dimension } from "@/models/Dimension";
 import { ValueClustering } from "@/models/ValueClustering";
 import { Workspace } from "@/models/Workspace";
+import { Batch, BatchData } from "@/models/Batch";
 
 export type ExtractDimensionInputType = {
     trajectories : Trajectory[];
@@ -41,18 +42,21 @@ export type ExtractDimensionValuesOutputType = {
 
 export type CreateWorkspaceInputType = {
     workspace : Workspace;
+    trajectories : Trajectory[];
 };
 
 export type CreateWorkspaceOutputType = {
     id : string;
     ingestionToken : string;
     workspace : Workspace;
+    batches : Batch[];
 };
 
 export type GetWorkspaceOutputType = {
     id : string;
     ingestionToken : string;
     workspace : Workspace;
+    batches : Batch[];
 };
 
 export type ReplaceWorkspaceInputType = {
@@ -70,6 +74,20 @@ export type AppendTrajectoriesInputType = {
 
 export type AppendTrajectoriesOutputType = {
     id : string;
-    workspace : Workspace;
+    batch : Batch;
     appendedCount : number;
+};
+
+export type GetBatchDataOutputType = {
+    batchId : string;
+    data : BatchData;
+};
+
+export type ReplaceBatchValueClusteringsInputType = {
+    valueClusterings : ValueClustering[];
+};
+
+export type ReplaceBatchValueClusteringsOutputType = {
+    batchId : string;
+    valueClusterings : ValueClustering[];
 };

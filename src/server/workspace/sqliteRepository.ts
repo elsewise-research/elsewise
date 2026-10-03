@@ -5,6 +5,8 @@ import { randomUUID } from "crypto";
 import Database from "better-sqlite3";
 import { Workspace } from "@/models/Workspace";
 import { Trajectory } from "@/models/Trajectory";
+import { ValueClustering } from "@/models/ValueClustering";
+import { Batch, BatchData } from "@/models/Batch";
 import { ensureTrajectoryColors } from "@/utils/trajectory";
 import { StoredWorkspaceRecord, WorkspaceRepository } from "./types";
 
@@ -16,14 +18,8 @@ type WorkspaceRow = {
     updated_at: string;
 };
 
-function rowToRecord(row: WorkspaceRow): StoredWorkspaceRecord {
-    return {
-        id: row.id,
-        workspace: JSON.parse(row.data) as Workspace,
-        ingestionToken: row.ingestion_token,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-    };
+function batchRowToBatch(row: { id: string; created_at: string }): Batch {
+    return { id: row.id, createdAt: row.created_at };
 }
 
 function openDatabase(): Database.Database {
@@ -41,6 +37,15 @@ function openDatabase(): Database.Database {
             updated_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_workspaces_ingestion_token ON workspaces(ingestion_token);
+
+        CREATE TABLE IF NOT EXISTS batches (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            data TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_batches_workspace_id ON batches(workspace_id);
     `);
     return db;
 }
@@ -60,60 +65,146 @@ function getDb(): Database.Database {
 }
 
 class SqliteWorkspaceRepository implements WorkspaceRepository {
-    async create(workspace: Workspace): Promise<StoredWorkspaceRecord> {
+    // Workspace rows created before batches existed still have `trajectories`/
+    // `valueClusterings` embedded directly in their JSON blob. The first time such a row
+    // is read, split that data out into its own batch row and strip it from the workspace
+    // row — a one-time, lazy migration (this codebase has no separate migration mechanism).
+    // Returns the parsed (and, if needed, migrated) metadata directly, so callers don't
+    // have to re-parse the same JSON a second time.
+    private migrateLegacyShapeIfNeeded(row: WorkspaceRow): Workspace {
+        const parsed = JSON.parse(row.data) as Workspace & {
+            trajectories?: Trajectory[];
+            valueClusterings?: ValueClustering[];
+        };
+        if (parsed.trajectories === undefined) return parsed;
+
+        const { trajectories, valueClusterings, ...metadata } = parsed;
+        const batchId = randomUUID();
+        const data: BatchData = { trajectories: trajectories ?? [], valueClusterings: valueClusterings ?? [] };
+
+        getDb().transaction(() => {
+            getDb().prepare(
+                `INSERT INTO batches (id, workspace_id, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+            ).run(batchId, row.id, JSON.stringify(data), row.created_at, row.created_at);
+            getDb().prepare(`UPDATE workspaces SET data = ? WHERE id = ?`).run(JSON.stringify(metadata), row.id);
+        })();
+
+        return metadata;
+    }
+
+    async create(workspace: Workspace, trajectories: Trajectory[]): Promise<{ record: StoredWorkspaceRecord; batch: Batch }> {
         const id = randomUUID();
         const ingestionToken = randomUUID();
+        const batchId = randomUUID();
         const now = new Date().toISOString();
-        const withColors = ensureTrajectoryColors(workspace);
 
-        getDb().prepare(
-            `INSERT INTO workspaces (id, data, ingestion_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-        ).run(id, JSON.stringify(withColors), ingestionToken, now, now);
+        const withColors = ensureTrajectoryColors(workspace, trajectories);
+        const batchData: BatchData = { trajectories, valueClusterings: [] };
 
-        return { id, workspace: withColors, ingestionToken, createdAt: now, updatedAt: now };
+        getDb().transaction(() => {
+            getDb().prepare(
+                `INSERT INTO workspaces (id, data, ingestion_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+            ).run(id, JSON.stringify(withColors), ingestionToken, now, now);
+            getDb().prepare(
+                `INSERT INTO batches (id, workspace_id, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+            ).run(batchId, id, JSON.stringify(batchData), now, now);
+        })();
+
+        return {
+            record: { id, workspace: withColors, ingestionToken, createdAt: now, updatedAt: now },
+            batch: { id: batchId, createdAt: now },
+        };
     }
 
     async getById(id: string): Promise<StoredWorkspaceRecord | null> {
         const row = getDb().prepare(`SELECT * FROM workspaces WHERE id = ?`).get(id) as WorkspaceRow | undefined;
-        return row ? rowToRecord(row) : null;
+        if (!row) return null;
+
+        return {
+            id: row.id,
+            workspace: this.migrateLegacyShapeIfNeeded(row),
+            ingestionToken: row.ingestion_token,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+        };
+    }
+
+    async listBatches(workspaceId: string): Promise<Batch[]> {
+        const rows = getDb()
+            .prepare(`SELECT id, created_at FROM batches WHERE workspace_id = ? ORDER BY created_at ASC`)
+            .all(workspaceId) as { id: string; created_at: string }[];
+        return rows.map(batchRowToBatch);
     }
 
     async replace(id: string, workspace: Workspace): Promise<StoredWorkspaceRecord | null> {
         const existing = await this.getById(id);
         if (!existing) return null;
 
-        const merged: Workspace = { ...workspace, trajectories: existing.workspace.trajectories };
         const now = new Date().toISOString();
-
         getDb().prepare(`UPDATE workspaces SET data = ?, updated_at = ? WHERE id = ?`).run(
-            JSON.stringify(merged),
+            JSON.stringify(workspace),
             now,
             id,
         );
 
-        return { ...existing, workspace: merged, updatedAt: now };
+        return { ...existing, workspace, updatedAt: now };
     }
 
-    async appendTrajectories(id: string, trajectories: Trajectory[]): Promise<StoredWorkspaceRecord | null> {
-        const existing = await this.getById(id);
+    async getBatchData(workspaceId: string, batchId: string): Promise<BatchData | null> {
+        // Ensures a legacy (pre-batching) workspace has already been lazily migrated into
+        // the batches table — without this, a workspace that's never been read via getById
+        // would look like it has no batches at all, even though its data just hasn't been
+        // split out of the old blob yet.
+        const workspace = await this.getById(workspaceId);
+        if (!workspace) return null;
+
+        const row = getDb()
+            .prepare(`SELECT data FROM batches WHERE workspace_id = ? AND id = ?`)
+            .get(workspaceId, batchId) as { data: string } | undefined;
+        return row ? (JSON.parse(row.data) as BatchData) : null;
+    }
+
+    async replaceBatchValueClusterings(
+        workspaceId: string,
+        batchId: string,
+        valueClusterings: ValueClustering[],
+    ): Promise<BatchData | null> {
+        const existing = await this.getBatchData(workspaceId, batchId);
         if (!existing) return null;
 
-        const merged = ensureTrajectoryColors({
-            ...existing.workspace,
-            trajectories: [...(existing.workspace.trajectories ?? []), ...trajectories],
-        });
+        const updated: BatchData = { ...existing, valueClusterings };
         const now = new Date().toISOString();
+        getDb().prepare(`UPDATE batches SET data = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(
+            JSON.stringify(updated),
+            now,
+            workspaceId,
+            batchId,
+        );
 
-        const append = getDb().transaction(() => {
+        return updated;
+    }
+
+    async appendTrajectoryBatch(workspaceId: string, trajectories: Trajectory[]): Promise<{ batch: Batch; data: BatchData } | null> {
+        const existing = await this.getById(workspaceId);
+        if (!existing) return null;
+
+        const batchId = randomUUID();
+        const now = new Date().toISOString();
+        const data: BatchData = { trajectories, valueClusterings: [] };
+        const withColors = ensureTrajectoryColors(existing.workspace, trajectories);
+
+        getDb().transaction(() => {
+            getDb().prepare(
+                `INSERT INTO batches (id, workspace_id, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+            ).run(batchId, workspaceId, JSON.stringify(data), now, now);
             getDb().prepare(`UPDATE workspaces SET data = ?, updated_at = ? WHERE id = ?`).run(
-                JSON.stringify(merged),
+                JSON.stringify(withColors),
                 now,
-                id,
+                workspaceId,
             );
-        });
-        append();
+        })();
 
-        return { ...existing, workspace: merged, updatedAt: now };
+        return { batch: { id: batchId, createdAt: now }, data };
     }
 
     async verifyIngestionToken(id: string, token: string): Promise<boolean> {
