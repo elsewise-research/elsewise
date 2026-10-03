@@ -8,7 +8,6 @@ export type Workspace = {
     trajectories?: Trajectory[];
     dimensions?: Dimension[];
     valueClusterings?: ValueClustering[];
-    prevValueClusterings?: ValueClustering[];
     settings?: WorkspaceSetting;
 };
 
