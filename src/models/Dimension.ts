@@ -5,5 +5,5 @@ export type Dimension = {
     name: string;
     description: string;
     values: string[];
-    composedOf?: DimensionId[];
 }
+
