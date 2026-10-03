@@ -24,6 +24,7 @@ type simpleBSVData = {
     onCellClick : (moments: TrajectoryMoment[]) => void;
     currTrajectoryMoment? : TrajectoryMoment;
     highlightedTrajectoryMoments? : TrajectoryMoment[];
+    isClustering? : boolean;
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
@@ -42,6 +43,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         onCellClick,
         currTrajectoryMoment,
         highlightedTrajectoryMoments = [],
+        isClustering = false,
         isDropTarget} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
@@ -126,7 +128,9 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             </div>
             <div className="bsv-description">{dimensionDescription}</div>
             <div className="bsv-viz nodrag">
-            {compactView ? (
+            {isClustering ? (
+                <p>Clustering in progress...</p>
+            ) : compactView ? (
                 <table className="bsv-table">
                     <tbody>
                         {Object.entries(valueClustering.valueMapping).map(([value, moments]) => (

@@ -118,6 +118,17 @@ function Editor() {
     const [isAddDimensionOpen, setIsAddDimensionOpen] = useState(false);
     const [currTrajectoryMoment, setCurrTrajectoryMoment] = useState<TrajectoryMoment | undefined>(undefined);
     const [highlightedTrajectoryMoments, setHighlightedTrajectoryMoments] = useState<TrajectoryMoment[]>([]);
+    const [clusteringDimensionIds, setClusteringDimensionIds] = useState<string[]>([]);
+
+    // Marks the given dimensions as clustering for the duration of `run`, so their BSV nodes can show a progress state.
+    const withClusteringIndicator = async <T,>(dimensionIds: string[], run: () => Promise<T>): Promise<T> => {
+      setClusteringDimensionIds((prev) => [...prev, ...dimensionIds]);
+      try {
+        return await run();
+      } finally {
+        setClusteringDimensionIds((prev) => prev.filter((id) => !dimensionIds.includes(id)));
+      }
+    };
     const [selectedTurnOrder, setSelectedTurnOrder] = useState<number | "all">("all");
     const { getIntersectingNodes } = useReactFlow();
 
@@ -218,12 +229,13 @@ function Editor() {
       persistWorkspace(appendedWorkspace);
 
       // Cluster only the dimensions we just extracted, and only for the batch being viewed.
-      const fresh = await clusterDimensionValues(
+      const extractedIds = result.dimensions.map((dimension) => dimension.id);
+      const fresh = await withClusteringIndicator(extractedIds, () => clusterDimensionValues(
         batchData,
         appendedWorkspace.dimensions ?? [],
         appendedWorkspace.domainDescription,
-        result.dimensions.map((dimension) => dimension.id),
-      );
+        extractedIds,
+      ));
       setBatchData((prev) => {
         if (!prev) return prev;
         const valueClusterings = mergeValueClusterings(prev.valueClusterings, fresh);
@@ -238,12 +250,13 @@ function Editor() {
     const handleDimensionValueCluster = async (dimensionIds?: string[]) => {
       if (!workspace || !batchData || !selectedBatchId) return;
 
-      const fresh = await clusterDimensionValues(
+      const targetIds = dimensionIds ?? (workspace.dimensions ?? []).map((dimension) => dimension.id);
+      const fresh = await withClusteringIndicator(targetIds, () => clusterDimensionValues(
         batchData,
         workspace.dimensions ?? [],
         workspace.domainDescription,
         dimensionIds,
-      );
+      ));
       setBatchData((prev) => {
         if (!prev) return prev;
         const valueClusterings = mergeValueClusterings(prev.valueClusterings, fresh);
@@ -624,6 +637,7 @@ function Editor() {
             onToggleCompactView: () => handleToggleCompactView(dimension.id),
             onDelete: () => handleDeleteDimension(dimension.id),
             onValueCluster: () => handleDimensionValueCluster([dimension.id]),
+            isClustering: clusteringDimensionIds.includes(dimension.id),
             onMomentClick: handleMomentClick,
             onCellClick: handleCellClick,
             highlightedTrajectoryMoments,
@@ -661,7 +675,7 @@ function Editor() {
       });
 
       setNodes([...simpleNodes, ...compositionalNodes]);
-    }, [workspace, batchData, trajectoryColorSetting]);
+    }, [workspace, batchData, trajectoryColorSetting, clusteringDimensionIds]);
 
     useEffect(() => {
       setNodes((current) =>
