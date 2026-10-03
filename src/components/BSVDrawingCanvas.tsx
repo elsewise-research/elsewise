@@ -28,6 +28,8 @@ type Props = {
     getCellMoments: (rowValue: string, columnValue: string) => TrajectoryMoment[];
     getTurnOrder: (moment: TrajectoryMoment) => number | undefined;
     columnLabel?: (column: string) => string;
+    rowLabel?: (row: string) => string;
+    cornerLabel?: string;
     showArrows?: boolean;
     onMomentClick?: (moment: TrajectoryMoment) => void;
     onCellClick?: (moments: TrajectoryMoment[]) => void;
@@ -43,6 +45,8 @@ export default function BSVDrawingCanvas({
     getCellMoments,
     getTurnOrder,
     columnLabel = (column) => column,
+    rowLabel = (row) => row,
+    cornerLabel = "Value",
     showArrows = true,
     onMomentClick,
     onCellClick,
@@ -156,7 +160,7 @@ export default function BSVDrawingCanvas({
                 )}
 
                 {/* headers */}
-                <Text text="Value" x={8} y={6} fontSize={12} fontStyle="bold" fill="#777" />
+                <Text text={cornerLabel} x={8} y={6} fontSize={12} fontStyle="bold" fill="#777" />
                 {columns.map((column, colIndex) => (
                     <Text
                         key={`col-header-${column}`}
@@ -174,7 +178,7 @@ export default function BSVDrawingCanvas({
                 {values.map((value, rowIndex) => (
                     <Text
                         key={`row-label-${value}`}
-                        text={value}
+                        text={rowLabel(value)}
                         x={8}
                         y={HEADER_HEIGHT + rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2 - 6}
                         width={LABEL_WIDTH - 12}

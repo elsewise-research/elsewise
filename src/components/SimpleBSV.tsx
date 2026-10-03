@@ -147,12 +147,13 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                 </table>
             ) : (
                 <BSVDrawingCanvas
-                    values={Object.keys(valueClustering.valueMapping)}
-                    columns={distinctTurnOrders.map(String)}
-                    columnLabel={(column) => `step ${column}`}
-                    getCellMoments={(rowValue, column) =>
-                        (valueClustering.valueMapping[rowValue] ?? []).filter(
-                            (moment) => getTurnOrder(moment) === Number(column),
+                    values={distinctTurnOrders.map(String)}
+                    columns={Object.keys(valueClustering.valueMapping)}
+                    rowLabel={(row) => `step ${row}`}
+                    cornerLabel="Step"
+                    getCellMoments={(rowValue, columnValue) =>
+                        (valueClustering.valueMapping[columnValue] ?? []).filter(
+                            (moment) => getTurnOrder(moment) === Number(rowValue),
                         )
                     }
                     trajectories={trajectories}
