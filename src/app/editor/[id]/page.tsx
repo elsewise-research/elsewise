@@ -738,9 +738,11 @@ function Editor() {
               )}
               <button onClick={() => {handleAddDimension()}} title="add new dimension"><Plus size={16} /></button>
               <button onClick={() => {handleExtractDimension()}}title="exract dimensions from trajectories"><Sparkles size={16} /></button>
+              <button onClick={() => {handleDimensionValueCluster()}} title="re-cluster all trajectory moments in this batch across all dimensions" aria-label="re-cluster all trajectory moments in this batch across all dimensions"><Group size={16} /></button>
               <button onClick={() => {handleClearHighlightedTrajectoryMoment()}} title="clear highlighted trajectory moments" aria-label="clear highlighted trajectory moments">
                 <FilterX size={16} />
               </button>
+              
           </div>
           <div className={styles["trajectory-viewer"]}>
             <TrajectoryViewer
