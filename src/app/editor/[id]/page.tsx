@@ -705,7 +705,7 @@ function Editor() {
         </div>
           <div className={styles["action-bar"]}>
               <div className={styles["turn-order-slider"]} title="highlight trajectory moments by turn order">
-                <span>{selectedTurnOrder === "all" ? "All" : `Turn ${selectedTurnOrder}`}</span>
+                <span>{selectedTurnOrder === "all" ? "All turns" : `Turn ${selectedTurnOrder}`}</span>
                 <input
                   type="range"
                   min={0}
