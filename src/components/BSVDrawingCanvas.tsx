@@ -12,6 +12,7 @@ const HEADER_HEIGHT = 40;
 const CIRCLE_RADIUS = 10;
 const CIRCLE_GAP = 4;
 const CELL_MARGIN = 3;
+const EMPTY_CELL_OPACITY = 0.20;
 
 type HoverInfo = {
     x: number;
@@ -145,6 +146,7 @@ export default function BSVDrawingCanvas({
                             height={ROW_HEIGHT - CELL_MARGIN * 2}
                             fill="#eee"
                             cornerRadius={10}
+                            opacity={getCellMoments(value, column).length > 0 ? 1 : EMPTY_CELL_OPACITY}
                             onClick={() => onCellClick?.(getCellMoments(value, column))}
                             onTap={() => onCellClick?.(getCellMoments(value, column))}
                             onMouseEnter={(e) => {
