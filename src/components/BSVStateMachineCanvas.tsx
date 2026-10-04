@@ -7,7 +7,8 @@ import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/
 
 const WIDTH = 320;
 const HEIGHT = 260;
-const NODE_RADIUS = 15;
+const MIN_NODE_RADIUS = 10;
+const MAX_NODE_RADIUS = 24;
 const MIN_OPACITY = 0.25;
 
 type SimNode = SimulationNodeDatum & {
@@ -74,7 +75,7 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
             .force("charge", forceManyBody().strength(-10))
             .force("link", forceLink<SimNode, SimLink>(simLinks).id((n) => n.id).distance(70))
             .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
-            .force("collide", forceCollide(NODE_RADIUS + 12))
+            .force("collide", forceCollide(MAX_NODE_RADIUS + 12))
             .stop();
 
         for (let i = 0; i < 300; i++) simulation.tick();
@@ -82,9 +83,9 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
         // Rescale/recenter the settled layout so the whole graph, including each node's
         // label (a 120px-wide box below it), fits inside the viewport.
         const labelHalfWidth = 60;
-        const labelDepth = NODE_RADIUS + 4 + 16;
+        const labelDepth = MAX_NODE_RADIUS + 4 + 16;
         const paddingX = labelHalfWidth + 4;
-        const paddingY = Math.max(NODE_RADIUS + 8, labelDepth) + 4;
+        const paddingY = Math.max(MAX_NODE_RADIUS + 8, labelDepth) + 4;
         const xs = simNodes.map((n) => n.x ?? WIDTH / 2);
         const ys = simNodes.map((n) => n.y ?? HEIGHT / 2);
         const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -110,6 +111,8 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
     const maxCount = Math.max(1, ...nodes.map((n) => n.count));
     const opacityFor = (count: number) =>
         maxCount === 1 ? 1 : MIN_OPACITY + (1 - MIN_OPACITY) * ((count - 1) / (maxCount - 1));
+    const radiusFor = (count: number) =>
+        maxCount === 1 ? MAX_NODE_RADIUS : MIN_NODE_RADIUS + (MAX_NODE_RADIUS - MIN_NODE_RADIUS) * ((count - 1) / (maxCount - 1));
 
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
@@ -125,12 +128,13 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
 
                     // Self-loop: draw a small loop above the node instead of a straight arrow.
                     if (source.id === target.id) {
-                        const loopSize = NODE_RADIUS * 1.4;
+                        const r = radiusFor(source.count);
+                        const loopSize = r * 1.4;
                         return (
                             <Path
                                 key={`link-${index}`}
-                                data={`M ${sx - NODE_RADIUS * 0.5} ${sy - NODE_RADIUS * 0.9}
-                                       C ${sx - loopSize} ${sy - loopSize * 1.8}, ${sx + loopSize} ${sy - loopSize * 1.8}, ${sx + NODE_RADIUS * 0.5} ${sy - NODE_RADIUS * 0.9}`}
+                                data={`M ${sx - r * 0.5} ${sy - r * 0.9}
+                                       C ${sx - loopSize} ${sy - loopSize * 1.8}, ${sx + loopSize} ${sy - loopSize * 1.8}, ${sx + r * 0.5} ${sy - r * 0.9}`}
                                 stroke="#999"
                                 strokeWidth={1.5}
                                 opacity={0.7}
@@ -141,16 +145,17 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
                     const dx = tx - sx, dy = ty - sy;
                     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
                     const unitX = dx / dist, unitY = dy / dist;
-                    const margin = NODE_RADIUS + 2;
+                    const startMargin = radiusFor(source.count) + 2;
+                    const endMargin = radiusFor(target.count) + 2;
 
                     return (
                         <Arrow
                             key={`link-${index}`}
                             points={[
-                                sx + unitX * margin,
-                                sy + unitY * margin,
-                                tx - unitX * margin,
-                                ty - unitY * margin,
+                                sx + unitX * startMargin,
+                                sy + unitY * startMargin,
+                                tx - unitX * endMargin,
+                                ty - unitY * endMargin,
                             ]}
                             stroke="#111"
                             fill="#111"
@@ -181,7 +186,7 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
                         }}
                     >
                         <Circle
-                            radius={NODE_RADIUS}
+                            radius={radiusFor(node.count)}
                             fill="#FFFFFF"
                             opacity={opacityFor(node.count)}
                             stroke={hoveredNodeId === node.id ? "#333" : "#000"}
@@ -192,10 +197,10 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
                             fontSize={12}
                             fontStyle="600"
                             fill="black"
-                            width={NODE_RADIUS * 2}
-                            height={NODE_RADIUS * 2}
-                            offsetX={NODE_RADIUS}
-                            offsetY={NODE_RADIUS}
+                            width={radiusFor(node.count) * 2}
+                            height={radiusFor(node.count) * 2}
+                            offsetX={radiusFor(node.count)}
+                            offsetY={radiusFor(node.count)}
                             align="center"
                             verticalAlign="middle"
                             opacity={opacityFor(node.count)}
@@ -204,7 +209,7 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
                             text={node.id.split(DIMENSION_VALUE_SEPARATOR).join(", ")}
                             fontSize={10}
                             fill="#333"
-                            y={NODE_RADIUS + 4}
+                            y={radiusFor(node.count) + 4}
                             width={120}
                             offsetX={60}
                             align="center"
