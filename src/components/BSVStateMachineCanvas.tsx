@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, type SimulationNodeDatum, type SimulationLinkDatum } from "d3-force";
 import { Stage, Layer, Arrow, Circle, Text, Group, Path } from "react-konva";
 import { Trajectory } from "@/models/Trajectory";
@@ -26,6 +26,10 @@ type Props = {
 
 export default function BSVStateMachineCanvas({ valueClustering, trajectories, onCellClick }: Props) {
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+    // Positions the user has dragged nodes to, keyed by node id; anything not here uses the
+    // computed layout. Local to this canvas, so it never touches the parent React Flow node.
+    const [draggedPositions, setDraggedPositions] = useState<Record<string, { x: number; y: number }>>({});
+    const dragMovedRef = useRef(false);
 
     const { nodes, links } = useMemo(() => {
         const turnOrderByTrajectory = new Map<string, Map<string, number>>();
@@ -115,16 +119,21 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
         maxCount === 1 ? MAX_NODE_RADIUS : MIN_NODE_RADIUS + (MAX_NODE_RADIUS - MIN_NODE_RADIUS) * ((count - 1) / (maxCount - 1));
 
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const positionOf = (node: SimNode) => draggedPositions[node.id] ?? { x: node.x!, y: node.y! };
 
     return (
         <Stage width={WIDTH} height={HEIGHT}>
             <Layer>
                 {links.map((link, index) => {
-                    const source = typeof link.source === "object" ? link.source : nodeById.get(link.source as string);
-                    const target = typeof link.target === "object" ? link.target : nodeById.get(link.target as string);
-                    if (!source || !target || source.x === undefined || target.x === undefined) return null;
+                    const sourceId = typeof link.source === "object" ? link.source.id : link.source as string;
+                    const targetId = typeof link.target === "object" ? link.target.id : link.target as string;
+                    const source = nodeById.get(sourceId);
+                    const target = nodeById.get(targetId);
+                    if (!source || !target) return null;
 
-                    const sx = source.x!, sy = source.y!, tx = target.x!, ty = target.y!;
+                    const sourcePos = positionOf(source);
+                    const targetPos = positionOf(target);
+                    const sx = sourcePos.x, sy = sourcePos.y, tx = targetPos.x, ty = targetPos.y;
 
                     // Self-loop: draw a small loop above the node instead of a straight arrow.
                     if (source.id === target.id) {
@@ -170,10 +179,23 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
                 {nodes.map((node) => (
                     <Group
                         key={node.id}
-                        x={node.x}
-                        y={node.y}
-                        onClick={() => onCellClick?.(valueClustering.valueMapping[node.id] ?? [])}
-                        onTap={() => onCellClick?.(valueClustering.valueMapping[node.id] ?? [])}
+                        x={positionOf(node).x}
+                        y={positionOf(node).y}
+                        draggable
+                        onDragStart={() => { dragMovedRef.current = false; }}
+                        onDragMove={(e) => {
+                            dragMovedRef.current = true;
+                            setDraggedPositions((prev) => ({ ...prev, [node.id]: { x: e.target.x(), y: e.target.y() } }));
+                        }}
+                        onClick={() => {
+                            // A drag that ends over the node would otherwise also fire a click.
+                            if (dragMovedRef.current) return;
+                            onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
+                        }}
+                        onTap={() => {
+                            if (dragMovedRef.current) return;
+                            onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
+                        }}
                         onMouseEnter={(e) => {
                             const stage = e.target.getStage();
                             if (stage) stage.container().style.cursor = "pointer";
