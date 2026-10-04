@@ -25,6 +25,7 @@ import {
   mergeValueClusterings,
   dimensionIdsKeyOf,
 } from "@/utils/dimension";
+import { ensureTrajectoryColors } from "@/utils/trajectory";
 import { callApi, getApi } from "@/app/apis/api";
 import {
   ExtractDimensionInputType,
@@ -45,7 +46,6 @@ import CompositionalBSV from "@/components/CompositionalBSV";
 import TrajectoryViewer  from "@/components/TrajectoryViewer";
 import AddDimensionDialog, { type AddDimensionInput } from "@/components/dialogs/AddDimensionDialog";
 import IngestionCredentialDialog from "@/components/dialogs/IngestionCredentialDialog";
-import NewBatchDialog from "@/components/dialogs/NewBatchDialog";
 import icon from "@/app/icon.png";
 import styles from "./editor.module.css";
 
@@ -110,6 +110,7 @@ function Editor() {
     const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
     const [batchData, setBatchData] = useState<BatchData | null>(null);
     const [pendingBatchIds, setPendingBatchIds] = useState<string[]>([]);
+    const [clusteringBatchId, setClusteringBatchId] = useState<string | null>(null);
     const [ingestionToken, setIngestionToken] = useState<string | null>(null);
     const [isIngestionDialogOpen, setIsIngestionDialogOpen] = useState(false);
     const reactFlowWrapper = useRef(null);
@@ -511,47 +512,45 @@ function Editor() {
       });
     };
 
-    // No answer needed to keep the new batch's trajectories/metadata visible in the slider —
-    // the polling effect already merged them into local `batches` state.
-    const handleNewBatchNo = () => {
-      setPendingBatchIds([]);
-    };
+    // Clicking a pending batch clusters its trajectory moments against every dimension,
+    // recomputes every existing composite against it, persists the result, then switches the
+    // view to it. The PUT is awaited so the batch's data is already correct server-side by the
+    // time anything re-fetches it.
+    const handleClusterPendingBatch = async (batchId: string) => {
+      if (!workspace || !id || clusteringBatchId) return;
 
-    // Reclusters every existing dimension (and recomputes every existing composite) against
-    // the newly arrived batch, persists the result, then switches the view to it. The PUT
-    // below is deliberately awaited (unlike this file's usual fire-and-forget persistence)
-    // so the batch's data is already correct server-side by the time anything re-fetches it.
-    const handleNewBatchYes = async () => {
-      const newestId = pendingBatchIds[pendingBatchIds.length - 1];
-      setPendingBatchIds([]);
-      if (!workspace || !id || !newestId) return;
+      setClusteringBatchId(batchId);
+      try {
+        const batchResult = await getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${batchId}`);
+        let valueClusterings = await clusterDimensionValues(
+          batchResult.data,
+          workspace.dimensions ?? [],
+          workspace.domainDescription,
+        );
 
-      const newBatchResult = await getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${newestId}`);
-      let valueClusterings = await clusterDimensionValues(
-        newBatchResult.data,
-        workspace.dimensions ?? [],
-        workspace.domainDescription,
-      );
+        for (const dimensionIds of compositeDimensionIdsList(workspace.settings?.nodePosition)) {
+          const recomputed = recomputeComposite(valueClusterings, dimensionIds);
+          if (!recomputed) continue;
 
-      for (const dimensionIds of compositeDimensionIdsList(workspace.settings?.nodePosition)) {
-        const recomputed = recomputeComposite(valueClusterings, dimensionIds);
-        if (!recomputed) continue;
+          const key = dimensionIdsKeyOf(dimensionIds);
+          valueClusterings = [
+            ...valueClusterings.filter((vc) => dimensionIdsKeyOf(vc.dimensionIds) !== key),
+            recomputed,
+          ];
+        }
 
-        const key = dimensionIdsKeyOf(dimensionIds);
-        valueClusterings = [
-          ...valueClusterings.filter((vc) => dimensionIdsKeyOf(vc.dimensionIds) !== key),
-          recomputed,
-        ];
+        await callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
+          `/apis/Workspace/${id}/Batches/${batchId}/ValueClusterings`,
+          { valueClusterings },
+          "PUT",
+        );
+
+        setPendingBatchIds((ids) => ids.filter((pendingId) => pendingId !== batchId));
+        handleBatchChange(batchId);
+        setBatchData({ ...batchResult.data, valueClusterings });
+      } finally {
+        setClusteringBatchId(null);
       }
-
-      await callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
-        `/apis/Workspace/${id}/Batches/${newestId}/ValueClusterings`,
-        { valueClusterings },
-        "PUT",
-      );
-
-      handleBatchChange(newestId);
-      setBatchData({ ...newBatchResult.data, valueClusterings });
     };
 
     useEffect(() => {
@@ -758,15 +757,34 @@ function Editor() {
               </button>
               
           </div>
-          <div className={styles["trajectory-viewer"]}>
-            <TrajectoryViewer
-              currTrajectoryMoment={currTrajectoryMoment}
-              trajectories={batchData?.trajectories ?? []}
-              trajectoryColorSetting={trajectoryColorSetting}
-              valueClusterings={batchData?.valueClusterings ?? []}
-              dimensions={workspace?.dimensions ?? []}
-              onBackToOverview={() => setCurrTrajectoryMoment(undefined)}
-            />
+          <div className={styles["right-side-panel"]}>
+            <div className={styles["pending-trajectory-batches"]}>
+              {pendingBatchIds.map((batchId) => {
+                const batch = batches.find((b) => b.id === batchId);
+                const isClustering = clusteringBatchId === batchId;
+                return (
+                  <button
+                    key={batchId}
+                    onClick={() => handleClusterPendingBatch(batchId)}
+                    disabled={clusteringBatchId !== null}
+                  >
+                    {isClustering
+                      ? "Clustering…"
+                      : `New batch · ${batch ? new Date(batch.createdAt).toLocaleString() : batchId}`}
+                  </button>
+                );
+              })}
+            </div>
+            <div className={styles["trajectory-viewer"]}>
+              <TrajectoryViewer
+                currTrajectoryMoment={currTrajectoryMoment}
+                trajectories={batchData?.trajectories ?? []}
+                trajectoryColorSetting={trajectoryColorSetting}
+                valueClusterings={batchData?.valueClusterings ?? []}
+                dimensions={workspace?.dimensions ?? []}
+                onBackToOverview={() => setCurrTrajectoryMoment(undefined)}
+              />
+            </div>
           </div>
           <div className={styles.canvas}>
             <ReactFlow nodes={nodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} />
@@ -785,9 +803,6 @@ function Editor() {
             ingestionToken={ingestionToken}
             onCancel={() => setIsIngestionDialogOpen(false)}
           />
-        )}
-        {pendingBatchIds.length > 0 && (
-          <NewBatchDialog onConfirm={handleNewBatchYes} onCancel={handleNewBatchNo} />
         )}
       </>
     );
