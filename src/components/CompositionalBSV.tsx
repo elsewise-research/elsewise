@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-import { Grid3x3, Workflow, Trash2 } from "lucide-react";
+import { Grid3x3, Workflow, Trash2, Eye, EyeOff } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
@@ -20,6 +20,8 @@ type compositionalBSVData = {
     onToggleMatrixView : () => void;
     onDelete : () => void;
     onMomentClick : (moment: TrajectoryMoment) => void;
+    showArrows : boolean;
+    onToggleArrows : () => void;
     onCellClick : (moments: TrajectoryMoment[]) => void;
     currTrajectoryMoment? : TrajectoryMoment;
     highlightedTrajectoryMoments? : TrajectoryMoment[];
@@ -40,6 +42,8 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
         onCellClick,
         currTrajectoryMoment,
         highlightedTrajectoryMoments,
+        showArrows,
+        onToggleArrows,
         isDropTarget} = data;
 
         const isMatrixViewEligible = valueClustering.dimensionIds.length === 2;
@@ -86,6 +90,11 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                             {showMatrixView ? <Workflow size={16} /> : <Grid3x3 size={16} />}
                         </button>
                     )}
+                    {showMatrixView && (
+                        <button onClick={onToggleArrows} title={showArrows ? "Hide arrows" : "Show arrows"}>
+                            {showArrows ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    )}
                     <button onClick={handleDeleteClick} title="Delete this BSV">
                         <Trash2 size={16} />
                     </button>
@@ -107,9 +116,9 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                           trajectories={trajectories}
                           trajectoryColorSetting={trajectoryColorSetting}
                           getTurnOrder={getTurnOrder}
-                          showArrows={false}
                           onMomentClick={onMomentClick}
                           onCellClick={onCellClick}
+                          showArrows={showArrows}
                           currTrajectoryMoment={currTrajectoryMoment}
                           highlightedTrajectoryMoments={highlightedTrajectoryMoments}
                       />

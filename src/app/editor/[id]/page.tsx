@@ -330,6 +330,25 @@ function Editor() {
       });
     };
 
+    const handleToggleArrows = (key: string) => {
+      setWorkspace((prev) => {
+        if (!prev) return prev;
+
+        const currentlyEnabled = prev.settings?.showArrows?.[key]?.enabled ?? true;
+        const showArrows = {
+          ...prev.settings?.showArrows,
+          [key]: { enabled: !currentlyEnabled },
+        };
+
+        const updatedWorkspace: Workspace = {
+          ...prev,
+          settings: { ...prev.settings, showArrows },
+        };
+        persistWorkspace(updatedWorkspace);
+        return updatedWorkspace;
+      });
+    };
+
     // Deleting a dimension also prunes any composite nodePosition entry that referenced
     // it — otherwise that composite's node would keep appearing (with a broken label, since
     // the dimension is gone) and keep getting recomputed with stale data on every future
@@ -634,6 +653,8 @@ function Editor() {
             trajectoryColorSetting,
             compactView: workspace?.settings?.compactView?.[dimension.id]?.enabled ?? true,
             onToggleCompactView: () => handleToggleCompactView(dimension.id),
+            showArrows: workspace?.settings?.showArrows?.[dimension.id]?.enabled ?? true,
+            onToggleArrows: () => handleToggleArrows(dimension.id),
             onDelete: () => handleDeleteDimension(dimension.id),
             onValueCluster: () => handleDimensionValueCluster([dimension.id]),
             isClustering: clusteringDimensionIds.includes(dimension.id),
@@ -665,6 +686,8 @@ function Editor() {
             trajectoryColorSetting,
             matrixView: workspace?.settings?.matrixView?.[dimensionIdsKey]?.enabled ?? true,
             onToggleMatrixView: () => handleToggleMatrixView(dimensionIdsKey),
+            showArrows: workspace?.settings?.showArrows?.[dimensionIdsKey]?.enabled ?? true,
+            onToggleArrows: () => handleToggleArrows(dimensionIdsKey),
             onDelete: () => handleDeleteValueClustering(dimensionIds),
             onMomentClick: handleMomentClick,
             onCellClick: handleCellClick,

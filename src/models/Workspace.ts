@@ -21,4 +21,9 @@ export type WorkspaceSetting = {
         enabled: boolean;
       };
     };
+    showArrows?: {
+      [dimensionIdsKey: string]: {
+        enabled: boolean;
+      };
+    };
 };

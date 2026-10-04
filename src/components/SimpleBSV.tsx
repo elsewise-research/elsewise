@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-import { Rows3, LayoutGrid, Trash2, Group } from "lucide-react";
+import { Rows3, LayoutGrid, Trash2, Group, Eye, EyeOff } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
@@ -25,6 +25,8 @@ type simpleBSVData = {
     currTrajectoryMoment? : TrajectoryMoment;
     highlightedTrajectoryMoments? : TrajectoryMoment[];
     isClustering? : boolean;
+    showArrows : boolean;
+    onToggleArrows : () => void;
 }
 
 type SimpleBSV = Node<simpleBSVData, 'simpleBSV'>;
@@ -44,6 +46,8 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
         currTrajectoryMoment,
         highlightedTrajectoryMoments = [],
         isClustering = false,
+        showArrows,
+        onToggleArrows,
         isDropTarget} = data;
 
     if (valueClustering.dimensionIds.length !== 1) {
@@ -122,6 +126,11 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                 <button onClick={onValueCluster} title="Cluster trajectory moments based on the values">
                     <Group size={16} />
                 </button>
+                {!compactView && (
+                    <button onClick={onToggleArrows} title={showArrows ? "Hide arrows" : "Show arrows"}>
+                        {showArrows ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                )}
                 <button onClick={handleDeleteClick} title="Delete this BSV">
                     <Trash2 size={16} />
                 </button>
@@ -161,6 +170,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                     getTurnOrder={getTurnOrder}
                     onMomentClick={onMomentClick}
                     onCellClick={onCellClick}
+                    showArrows={showArrows}
                     currTrajectoryMoment={currTrajectoryMoment}
                     highlightedTrajectoryMoments={highlightedTrajectoryMoments}
                 />
