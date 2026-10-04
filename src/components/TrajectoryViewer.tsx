@@ -158,8 +158,8 @@ export default function TrajectoryViewer({
                             </div>
                             {isExpanded && (
                                 <ol className="trajectory-turn-summaries">
-                                    {trajectory.turns.map((turn) => (
-                                        <li key={turn.id}><p className="turn-id"><b>{turn.id}</b></p> {turn.summary}</li>
+                                    {trajectory.turns.map((turn, index) => (
+                                        <li key={turn.id}><p className="turn-id"><b>turn {index + 1}</b></p> {turn.summary}</li>
                                     ))}
                                 </ol>
                             )}
