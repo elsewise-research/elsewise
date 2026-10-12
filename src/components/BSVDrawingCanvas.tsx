@@ -5,13 +5,12 @@ import { Trajectory } from "@/models/Trajectory";
 import { TrajectoryMoment } from "@/models/ValueClustering";
 import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
 
-const ROW_HEIGHT = 44;
-const MIN_COL_WIDTH = 70;
+const MIN_CELL_SIZE = 70;
 const LABEL_WIDTH = 100;
 const HEADER_HEIGHT = 40;
-const CIRCLE_RADIUS = 10;
-const CIRCLE_GAP = 4;
-const CELL_MARGIN = 3;
+const CIRCLE_RADIUS = 8;
+const CIRCLE_GAP = 3;
+const CELL_MARGIN = 10;
 const EMPTY_CELL_OPACITY = 0.20;
 
 type HoverInfo = {
@@ -66,21 +65,27 @@ export default function BSVDrawingCanvas({
         isHighlighted(trajectoryId, turnId) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY;
     const [hovered, setHovered] = useState<HoverInfo | null>(null);
 
-    // Widen columns beyond the minimum so the cell with the most moments in it
-    // still fits them all without overflowing.
+    // Grow cells beyond the minimum so the one with the most moments in it still fits them
+    // all, wrapping onto multiple lines (roughly as many per line as lines) instead of
+    // stretching a single row — that's what keeps the cell square.
     const spacing = CIRCLE_RADIUS * 2 + CIRCLE_GAP;
     const maxMomentsPerCell = Math.max(
         1,
         ...values.flatMap((value) => columns.map((column) => getCellMoments(value, column).length)),
     );
-    const colWidth = Math.max(MIN_COL_WIDTH, maxMomentsPerCell * spacing - CIRCLE_GAP + CELL_MARGIN * 2 + 8);
+    const momentsPerRow = Math.max(1, Math.ceil(Math.sqrt(maxMomentsPerCell)));
+    const momentRows = Math.ceil(maxMomentsPerCell / momentsPerRow);
+    const contentSize = Math.max(momentsPerRow, momentRows) * spacing - CIRCLE_GAP;
+    const cellSize = Math.max(MIN_CELL_SIZE, contentSize + CELL_MARGIN * 2 + 8);
 
     const cellCenter = (rowIndex: number, colIndex: number) => ({
-        x: LABEL_WIDTH + colIndex * colWidth + colWidth / 2,
-        y: HEADER_HEIGHT + rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2,
+        x: LABEL_WIDTH + colIndex * cellSize + cellSize / 2,
+        y: HEADER_HEIGHT + rowIndex * cellSize + cellSize / 2,
     });
 
-    // Lay out the moments belonging to each (row, column) cell side by side within it.
+    // Lay out the moments belonging to each (row, column) cell in a grid, wrapping onto a new
+    // line every `momentsPerRow` moments (each line re-centered for its own moment count, and
+    // the whole grid centered vertically within the cell).
     const momentPositions = new Map<string, { x: number; y: number }>();
     values.forEach((value, rowIndex) => {
         columns.forEach((column, colIndex) => {
@@ -88,49 +93,93 @@ export default function BSVDrawingCanvas({
             if (moments.length === 0) return;
 
             const { x: cx, y: cy } = cellCenter(rowIndex, colIndex);
-            const totalWidth = moments.length * spacing - CIRCLE_GAP;
+            const rows = Math.ceil(moments.length / momentsPerRow);
+            const gridHeight = rows * spacing - CIRCLE_GAP;
             moments.forEach((moment, i) => {
-                const x = cx - totalWidth / 2 + spacing * i + spacing / 2;
-                momentPositions.set(`${moment.trajectoryId}::${moment.turnId}`, { x, y: cy });
+                const row = Math.floor(i / momentsPerRow);
+                const col = i % momentsPerRow;
+                const rowCount = Math.min(momentsPerRow, moments.length - row * momentsPerRow);
+                const rowWidth = rowCount * spacing - CIRCLE_GAP;
+
+                const x = cx - rowWidth / 2 + col * spacing + spacing / 2;
+                const y = cy - gridHeight / 2 + row * spacing + spacing / 2;
+                momentPositions.set(`${moment.trajectoryId}::${moment.turnId}`, { x, y });
             });
         });
     });
 
-    const arrows = !showArrows ? [] : trajectories.flatMap((trajectory) => {
-        const segments: { key: string; points: number[]; color: string; opacity: number }[] = [];
-        for (let i = 0; i < trajectory.turns.length - 1; i++) {
-            const fromTurnId = trajectory.turns[i].id;
-            const toTurnId = trajectory.turns[i + 1].id;
-            const from = momentPositions.get(`${trajectory.id}::${fromTurnId}`);
-            const to = momentPositions.get(`${trajectory.id}::${toTurnId}`);
-            if (!from || !to) continue;
-
-            // Trim both ends back to the circles' edges so the line (and its arrowhead)
-            // don't get hidden underneath the moment circles, which render on top.
-            const dx = to.x - from.x;
-            const dy = to.y - from.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            const margin = CIRCLE_RADIUS + 2;
-            const unitX = dist > 0 ? dx / dist : 0;
-            const unitY = dist > 0 ? dy / dist : 0;
-
-            segments.push({
-                key: `${trajectory.id}-${i}`,
-                points: [
-                    from.x + unitX * margin,
-                    from.y + unitY * margin,
-                    to.x - unitX * margin,
-                    to.y - unitY * margin,
-                ],
-                color: trajectoryColorSetting[trajectory.id] ?? "#999",
-                opacity: (markerOpacity(trajectory.id, fromTurnId) + markerOpacity(trajectory.id, toTurnId)) / 2,
-            });
-        }
-        return segments;
+    // Which (row, col) cell each trajectory moment falls in — built the same way as
+    // momentPositions, but keyed to the cell rather than the moment's own on-screen spot.
+    const momentCell = new Map<string, { rowIndex: number; colIndex: number }>();
+    values.forEach((value, rowIndex) => {
+        columns.forEach((column, colIndex) => {
+            for (const moment of getCellMoments(value, column)) {
+                momentCell.set(`${moment.trajectoryId}::${moment.turnId}`, { rowIndex, colIndex });
+            }
+        });
     });
 
-    const width = LABEL_WIDTH + columns.length * colWidth;
-    const height = HEADER_HEIGHT + values.length * ROW_HEIGHT;
+    const cellHalf = (cellSize - CELL_MARGIN * 2) / 2;
+
+    // The point on `fromCell`'s border closest to `toCell`. Since grid cells never overlap in
+    // a row they don't share or a column they don't share, that point's x is pinned to
+    // fromCell's near edge whenever the columns differ (its center x otherwise, as every x in
+    // the shared column is equally close) — and symmetrically for y and rows — which also
+    // means it lands exactly on the corner when both differ. Pulled back by `pad` so the arrow
+    // doesn't touch the cell edge.
+    const nearestEdgePoint = (
+        fromCell: { rowIndex: number; colIndex: number },
+        toCell: { rowIndex: number; colIndex: number },
+        pad: number,
+    ) => {
+        const { x: cx, y: cy } = cellCenter(fromCell.rowIndex, fromCell.colIndex);
+        const dCol = toCell.colIndex - fromCell.colIndex;
+        const dRow = toCell.rowIndex - fromCell.rowIndex;
+        const offsetX = dCol > 0 ? cellHalf : dCol < 0 ? -cellHalf : 0;
+        const offsetY = dRow > 0 ? cellHalf : dRow < 0 ? -cellHalf : 0;
+
+        const dist = Math.sqrt(offsetX * offsetX + offsetY * offsetY) || 1;
+        const scale = Math.max(0, dist - pad) / dist;
+        return { x: cx + offsetX * scale, y: cy + offsetY * scale };
+    };
+
+    // One arrow per distinct (fromCell -> toCell) pair, merging every trajectory's consecutive
+    // turns that cross that same pair of cells; its opacity is the average across all of them.
+    const cellArrows = new Map<string, { points: number[]; opacitySum: number; count: number }>();
+    if (showArrows) {
+        for (const trajectory of trajectories) {
+            for (let i = 0; i < trajectory.turns.length - 1; i++) {
+                const fromTurnId = trajectory.turns[i].id;
+                const toTurnId = trajectory.turns[i + 1].id;
+                const fromCell = momentCell.get(`${trajectory.id}::${fromTurnId}`);
+                const toCell = momentCell.get(`${trajectory.id}::${toTurnId}`);
+                if (!fromCell || !toCell) continue;
+                if (fromCell.rowIndex === toCell.rowIndex && fromCell.colIndex === toCell.colIndex) continue;
+
+                const key = `${fromCell.rowIndex}-${fromCell.colIndex}->${toCell.rowIndex}-${toCell.colIndex}`;
+                const opacity = (markerOpacity(trajectory.id, fromTurnId) + markerOpacity(trajectory.id, toTurnId)) / 2;
+
+                let entry = cellArrows.get(key);
+                if (!entry) {
+                    const start = nearestEdgePoint(fromCell, toCell, 4);
+                    const end = nearestEdgePoint(toCell, fromCell, 4);
+                    entry = { points: [start.x, start.y, end.x, end.y], opacitySum: 0, count: 0 };
+                    cellArrows.set(key, entry);
+                }
+                entry.opacitySum += opacity;
+                entry.count += 1;
+            }
+        }
+    }
+
+    const arrows = Array.from(cellArrows.entries()).map(([key, { points, opacitySum, count }]) => ({
+        key,
+        points,
+        opacity: opacitySum / count,
+    }));
+
+    const width = LABEL_WIDTH + columns.length * cellSize;
+    const height = HEADER_HEIGHT + values.length * cellSize;
 
     return (
         <Stage width={width} height={height}>
@@ -140,10 +189,10 @@ export default function BSVDrawingCanvas({
                     columns.map((column, colIndex) => (
                         <Rect
                             key={`cell-${rowIndex}-${colIndex}`}
-                            x={LABEL_WIDTH + colIndex * colWidth + CELL_MARGIN}
-                            y={HEADER_HEIGHT + rowIndex * ROW_HEIGHT + CELL_MARGIN}
-                            width={colWidth - CELL_MARGIN * 2}
-                            height={ROW_HEIGHT - CELL_MARGIN * 2}
+                            x={LABEL_WIDTH + colIndex * cellSize + CELL_MARGIN}
+                            y={HEADER_HEIGHT + rowIndex * cellSize + CELL_MARGIN}
+                            width={cellSize - CELL_MARGIN * 2}
+                            height={cellSize - CELL_MARGIN * 2}
                             fill="#eee"
                             cornerRadius={10}
                             opacity={getCellMoments(value, column).length > 0 ? 1 : EMPTY_CELL_OPACITY}
@@ -167,9 +216,9 @@ export default function BSVDrawingCanvas({
                     <Text
                         key={`col-header-${column}`}
                         text={columnLabel(column)}
-                        x={LABEL_WIDTH + colIndex * colWidth}
+                        x={LABEL_WIDTH + colIndex * cellSize}
                         y={6}
-                        width={colWidth}
+                        width={cellSize}
                         align="center"
                         fontSize={12}
                         fill="#777"
@@ -182,7 +231,7 @@ export default function BSVDrawingCanvas({
                         key={`row-label-${value}`}
                         text={rowLabel(value)}
                         x={8}
-                        y={HEADER_HEIGHT + rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2 - 6}
+                        y={HEADER_HEIGHT + rowIndex * cellSize + cellSize / 2 - 6}
                         width={LABEL_WIDTH - 12}
                         fontSize={12}
                         fill="#777"
@@ -194,11 +243,11 @@ export default function BSVDrawingCanvas({
                     <Arrow
                         key={arrow.key}
                         points={arrow.points}
-                        stroke={arrow.color}
-                        fill={arrow.color}
-                        strokeWidth={1.5}
-                        pointerLength={6}
-                        pointerWidth={6}
+                        stroke="#999"
+                        fill="#999"
+                        strokeWidth={2}
+                        pointerLength={5}
+                        pointerWidth={5}
                         opacity={arrow.opacity}
                     />
                 ))}
