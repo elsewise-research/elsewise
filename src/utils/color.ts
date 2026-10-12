@@ -9,3 +9,8 @@ export const HIGHLIGHTED_OPACITY = 0.6;
 
 // Opacity applied to a TrajectoryMoment marker when it is NOT in highlightedTrajectoryMoments.
 export const NON_HIGHLIGHTED_OPACITY = 0.2;
+
+// Opacity applied to a cell-to-cell arrow in matrix view when exactly one of the two cells
+// it connects is highlighted (both highlighted -> HIGHLIGHTED_OPACITY, neither ->
+// NON_HIGHLIGHTED_OPACITY). Independent of those two so it can be tuned on its own.
+export const PARTIALLY_HIGHLIGHTED_OPACITY = 0.2;

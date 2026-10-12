@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Stage, Layer, Rect, Text, Circle, Group, Arrow, Label, Tag } from "react-konva";
 import { Trajectory } from "@/models/Trajectory";
 import { TrajectoryMoment } from "@/models/ValueClustering";
-import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
+import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY, PARTIALLY_HIGHLIGHTED_OPACITY } from "@/utils/color";
 
 const MIN_CELL_SIZE = 70;
 const LABEL_WIDTH = 100;
@@ -143,9 +143,18 @@ export default function BSVDrawingCanvas({
         return { x: cx + offsetX * scale, y: cy + offsetY * scale };
     };
 
+    // A cell counts as highlighted if any moment in it is (or, same as markerOpacity, if
+    // nothing is highlighted at all, in which case every cell counts).
+    const cellIsHighlighted = (rowIndex: number, colIndex: number) =>
+        getCellMoments(values[rowIndex], columns[colIndex]).some(
+            (moment) => isHighlighted(moment.trajectoryId, moment.turnId),
+        );
+
     // One arrow per distinct (fromCell -> toCell) pair, merging every trajectory's consecutive
-    // turns that cross that same pair of cells; its opacity is the average across all of them.
-    const cellArrows = new Map<string, { points: number[]; opacitySum: number; count: number }>();
+    // turns that cross that same pair of cells. Its opacity depends only on whether the two
+    // cells it connects are highlighted — not on which trajectories' transitions it merges:
+    // both highlighted -> full opacity, neither -> fully dimmed, just one -> halfway between.
+    const cellArrows = new Map<string, { points: number[]; opacity: number }>();
     if (showArrows) {
         for (const trajectory of trajectories) {
             for (let i = 0; i < trajectory.turns.length - 1; i++) {
@@ -157,25 +166,25 @@ export default function BSVDrawingCanvas({
                 if (fromCell.rowIndex === toCell.rowIndex && fromCell.colIndex === toCell.colIndex) continue;
 
                 const key = `${fromCell.rowIndex}-${fromCell.colIndex}->${toCell.rowIndex}-${toCell.colIndex}`;
-                const opacity = (markerOpacity(trajectory.id, fromTurnId) + markerOpacity(trajectory.id, toTurnId)) / 2;
+                if (cellArrows.has(key)) continue;
 
-                let entry = cellArrows.get(key);
-                if (!entry) {
-                    const start = nearestEdgePoint(fromCell, toCell, 4);
-                    const end = nearestEdgePoint(toCell, fromCell, 4);
-                    entry = { points: [start.x, start.y, end.x, end.y], opacitySum: 0, count: 0 };
-                    cellArrows.set(key, entry);
-                }
-                entry.opacitySum += opacity;
-                entry.count += 1;
+                const start = nearestEdgePoint(fromCell, toCell, 4);
+                const end = nearestEdgePoint(toCell, fromCell, 4);
+                const fromHighlighted = cellIsHighlighted(fromCell.rowIndex, fromCell.colIndex);
+                const toHighlighted = cellIsHighlighted(toCell.rowIndex, toCell.colIndex);
+                const opacity = fromHighlighted === toHighlighted
+                    ? (fromHighlighted ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY)
+                    : PARTIALLY_HIGHLIGHTED_OPACITY;
+
+                cellArrows.set(key, { points: [start.x, start.y, end.x, end.y], opacity });
             }
         }
     }
 
-    const arrows = Array.from(cellArrows.entries()).map(([key, { points, opacitySum, count }]) => ({
+    const arrows = Array.from(cellArrows.entries()).map(([key, { points, opacity }]) => ({
         key,
         points,
-        opacity: opacitySum / count,
+        opacity,
     }));
 
     const width = LABEL_WIDTH + columns.length * cellSize;
