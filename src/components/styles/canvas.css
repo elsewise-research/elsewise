@@ -103,3 +103,62 @@
 .bsv-viz p {
     color: #777;
 }
+
+.bsv-value-label {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.bsv-value-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.bsv-value-actions button {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    color: #999;
+}
+
+.bsv-value-actions button:hover {
+    color: #333;
+}
+
+.bsv-value-actions button:disabled {
+    color: #ccc;
+    cursor: default;
+}
+
+.bsv-value-edit-input {
+    font: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    color: #333;
+    width: 90px;
+}
+
+.bsv-add-value {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.bsv-add-value button {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    color: #999;
+}
+
+.bsv-add-value button:hover {
+    color: #333;
+}

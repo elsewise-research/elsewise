@@ -24,6 +24,10 @@ import {
   recomputeComposite,
   mergeValueClusterings,
   dimensionIdsKeyOf,
+  renameDimensionValue,
+  deleteDimensionValue,
+  addDimensionValue,
+  moveDimensionValue,
 } from "@/utils/dimension";
 import { ensureTrajectoryColors } from "@/utils/trajectory";
 import { callApi, getApi } from "@/app/apis/api";
@@ -374,6 +378,86 @@ function Editor() {
       });
     };
 
+    const withDimensionUpdated = (prevWorkspace: Workspace, dimensionId: string, updatedDimension: Dimension): Workspace => ({
+      ...prevWorkspace,
+      dimensions: (prevWorkspace.dimensions ?? []).map((d) => (d.id === dimensionId ? updatedDimension : d)),
+    });
+
+    const handleRenameDimensionValue = (dimensionId: string, oldValue: string, newValue: string) => {
+      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
+      if (!workspace || !dimension) return;
+
+      const { dimension: updatedDimension, valueClusterings } = renameDimensionValue(
+        dimension,
+        batchData?.valueClusterings ?? [],
+        oldValue,
+        newValue,
+      );
+      if (updatedDimension === dimension) return;
+
+      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
+      setWorkspace(updatedWorkspace);
+      persistWorkspace(updatedWorkspace);
+
+      setBatchData((prev) => (prev ? { ...prev, valueClusterings } : prev));
+      if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
+    };
+
+    const handleDeleteDimensionValue = (dimensionId: string, value: string) => {
+      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
+      if (!workspace || !dimension) return;
+
+      const confirmed = window.confirm(
+        `Delete value "${value}"? Any trajectory moments assigned to it — in this dimension and any combined view built from it — will become unassigned until re-clustered. This cannot be undone.`
+      );
+      if (!confirmed) return;
+
+      const { dimension: updatedDimension, valueClusterings } = deleteDimensionValue(
+        dimension,
+        batchData?.valueClusterings ?? [],
+        value,
+      );
+      if (updatedDimension === dimension) return;
+
+      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
+      setWorkspace(updatedWorkspace);
+      persistWorkspace(updatedWorkspace);
+
+      setBatchData((prev) => (prev ? { ...prev, valueClusterings } : prev));
+      if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
+    };
+
+    const handleAddDimensionValue = (dimensionId: string, value: string) => {
+      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
+      if (!workspace || !dimension) return;
+
+      const { dimension: updatedDimension, valueClusterings } = addDimensionValue(
+        dimension,
+        batchData?.valueClusterings ?? [],
+        value,
+      );
+      if (updatedDimension === dimension) return;
+
+      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
+      setWorkspace(updatedWorkspace);
+      persistWorkspace(updatedWorkspace);
+
+      setBatchData((prev) => (prev ? { ...prev, valueClusterings } : prev));
+      if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
+    };
+
+    const handleMoveDimensionValue = (dimensionId: string, value: string, direction: "up" | "down") => {
+      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
+      if (!workspace || !dimension) return;
+
+      const updatedDimension = moveDimensionValue(dimension, value, direction);
+      if (updatedDimension === dimension) return;
+
+      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
+      setWorkspace(updatedWorkspace);
+      persistWorkspace(updatedWorkspace);
+    };
+
     // Deleting a composite node removes its nodePosition entry (the only workspace-level
     // record of its existence, see compositeDimensionIdsList) and strips it from the
     // currently-loaded batch's value clusterings. Other, unvisited batches may still have a
@@ -651,12 +735,17 @@ function Editor() {
             trajectories,
             valueClustering,
             trajectoryColorSetting,
-            compactView: workspace?.settings?.compactView?.[dimension.id]?.enabled ?? true,
+            compactView: workspace?.settings?.compactView?.[dimension.id]?.enabled ?? false,
             onToggleCompactView: () => handleToggleCompactView(dimension.id),
             showArrows: workspace?.settings?.showArrows?.[dimension.id]?.enabled ?? true,
             onToggleArrows: () => handleToggleArrows(dimension.id),
             onDelete: () => handleDeleteDimension(dimension.id),
             onValueCluster: () => handleDimensionValueCluster([dimension.id]),
+            dimensionValues: dimension.values,
+            onRenameValue: (oldValue: string, newValue: string) => handleRenameDimensionValue(dimension.id, oldValue, newValue),
+            onDeleteValue: (value: string) => handleDeleteDimensionValue(dimension.id, value),
+            onAddValue: (value: string) => handleAddDimensionValue(dimension.id, value),
+            onMoveValue: (value: string, direction: "up" | "down") => handleMoveDimensionValue(dimension.id, value, direction),
             isClustering: clusteringDimensionIds.includes(dimension.id),
             onMomentClick: handleMomentClick,
             onCellClick: handleCellClick,
