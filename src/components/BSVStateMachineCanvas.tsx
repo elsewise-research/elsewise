@@ -206,12 +206,20 @@ export default function BSVStateMachineCanvas({
                             setDraggedPositions((prev) => ({ ...prev, [node.id]: { x: e.target.x(), y: e.target.y() } }));
                         }}
                         onClick={() => {
-                            // A drag that ends over the node would otherwise also fire a click.
-                            if (dragMovedRef.current) return;
+                            // A drag that ends over the node would otherwise also fire a click;
+                            // consume the flag so only that one click is suppressed, not every
+                            // click from then on.
+                            if (dragMovedRef.current) {
+                                dragMovedRef.current = false;
+                                return;
+                            }
                             onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
                         }}
                         onTap={() => {
-                            if (dragMovedRef.current) return;
+                            if (dragMovedRef.current) {
+                                dragMovedRef.current = false;
+                                return;
+                            }
                             onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
                         }}
                         onMouseEnter={(e) => {
