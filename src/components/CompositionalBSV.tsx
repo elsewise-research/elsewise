@@ -139,6 +139,7 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                           valueClustering={valueClustering}
                           trajectories={trajectories}
                           onCellClick={onCellClick}
+                          highlightedTrajectoryMoments={highlightedTrajectoryMoments}
                       />
                   )}
                 </div>

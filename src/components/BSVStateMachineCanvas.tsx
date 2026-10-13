@@ -22,9 +22,15 @@ type Props = {
     valueClustering: ValueClustering;
     trajectories: Trajectory[];
     onCellClick?: (moments: TrajectoryMoment[]) => void;
+    highlightedTrajectoryMoments?: TrajectoryMoment[];
 };
 
-export default function BSVStateMachineCanvas({ valueClustering, trajectories, onCellClick }: Props) {
+export default function BSVStateMachineCanvas({
+    valueClustering,
+    trajectories,
+    onCellClick,
+    highlightedTrajectoryMoments = [],
+}: Props) {
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     // Positions the user has dragged nodes to, keyed by node id; anything not here uses the
     // computed layout. Local to this canvas, so it never touches the parent React Flow node.
@@ -120,6 +126,18 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
 
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     const positionOf = (node: SimNode) => draggedPositions[node.id] ?? { x: node.x!, y: node.y! };
+
+    // True only when something is actually highlighted AND every one of this state's moments
+    // is part of it — not when nothing is highlighted at all (that would flag every node).
+    const isFullyHighlighted = (nodeId: string) => {
+        if (highlightedTrajectoryMoments.length === 0) return false;
+        const moments = valueClustering.valueMapping[nodeId] ?? [];
+        return moments.length > 0 && moments.every((moment) =>
+            highlightedTrajectoryMoments.some(
+                (highlighted) => highlighted.trajectoryId === moment.trajectoryId && highlighted.turnId === moment.turnId,
+            ),
+        );
+    };
 
     return (
         <Stage width={WIDTH} height={HEIGHT}>
@@ -238,6 +256,26 @@ export default function BSVStateMachineCanvas({ valueClustering, trajectories, o
                         />
                     </Group>
                 ))}
+
+                {/* A big red arrow pointing at any node whose moments are all highlighted. */}
+                {nodes.filter((node) => isFullyHighlighted(node.id)).map((node) => {
+                    const { x, y } = positionOf(node);
+                    const r = radiusFor(node.count);
+                    const dirX = Math.SQRT1_2, dirY = -Math.SQRT1_2; // up-right, pointing down-left into the node
+                    const tail = { x: x + dirX * (r + 54), y: y + dirY * (r + 54) };
+                    const head = { x: x + dirX * (r + 6), y: y + dirY * (r + 6) };
+                    return (
+                        <Arrow
+                            key={`highlight-arrow-${node.id}`}
+                            points={[tail.x, tail.y, head.x, head.y]}
+                            stroke="#e11d2e"
+                            fill="#e11d2e"
+                            strokeWidth={4}
+                            pointerLength={14}
+                            pointerWidth={14}
+                        />
+                    );
+                })}
             </Layer>
         </Stage>
     );
