@@ -26,4 +26,9 @@ export type WorkspaceSetting = {
         enabled: boolean;
       };
     };
+    stateNodePosition?: {
+      [dimensionIdsKey: string]: {
+        [stateId: string]: { x: number; y: number };
+      };
+    };
 };

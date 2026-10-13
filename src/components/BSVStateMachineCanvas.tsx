@@ -23,6 +23,8 @@ type Props = {
     trajectories: Trajectory[];
     onCellClick?: (moments: TrajectoryMoment[]) => void;
     highlightedTrajectoryMoments?: TrajectoryMoment[];
+    savedNodePositions?: Record<string, { x: number; y: number }>;
+    onNodePositionChange?: (nodeId: string, position: { x: number; y: number }) => void;
 };
 
 export default function BSVStateMachineCanvas({
@@ -30,10 +32,14 @@ export default function BSVStateMachineCanvas({
     trajectories,
     onCellClick,
     highlightedTrajectoryMoments = [],
+    savedNodePositions = {},
+    onNodePositionChange,
 }: Props) {
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-    // Positions the user has dragged nodes to, keyed by node id; anything not here uses the
-    // computed layout. Local to this canvas, so it never touches the parent React Flow node.
+    // Positions the user has dragged nodes to during this mount, keyed by node id; anything
+    // not here falls back to savedNodePositions (persisted in Workspace.settings) and then to
+    // the computed layout. Local state so dragging stays smooth; the final position is handed
+    // to onNodePositionChange on drag end so the parent can persist it.
     const [draggedPositions, setDraggedPositions] = useState<Record<string, { x: number; y: number }>>({});
     const dragMovedRef = useRef(false);
 
@@ -125,7 +131,8 @@ export default function BSVStateMachineCanvas({
         maxCount === 1 ? MAX_NODE_RADIUS : MIN_NODE_RADIUS + (MAX_NODE_RADIUS - MIN_NODE_RADIUS) * ((count - 1) / (maxCount - 1));
 
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
-    const positionOf = (node: SimNode) => draggedPositions[node.id] ?? { x: node.x!, y: node.y! };
+    const positionOf = (node: SimNode) =>
+        draggedPositions[node.id] ?? savedNodePositions[node.id] ?? { x: node.x!, y: node.y! };
 
     // True only when something is actually highlighted AND every one of this state's moments
     // is part of it — not when nothing is highlighted at all (that would flag every node).
@@ -204,6 +211,9 @@ export default function BSVStateMachineCanvas({
                         onDragMove={(e) => {
                             dragMovedRef.current = true;
                             setDraggedPositions((prev) => ({ ...prev, [node.id]: { x: e.target.x(), y: e.target.y() } }));
+                        }}
+                        onDragEnd={(e) => {
+                            onNodePositionChange?.(node.id, { x: e.target.x(), y: e.target.y() });
                         }}
                         onClick={() => {
                             // A drag that ends over the node would otherwise also fire a click;

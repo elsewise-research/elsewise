@@ -26,6 +26,8 @@ type compositionalBSVData = {
     onCellClick : (moments: TrajectoryMoment[]) => void;
     currTrajectoryMoment? : TrajectoryMoment;
     highlightedTrajectoryMoments? : TrajectoryMoment[];
+    stateNodePositions? : Record<string, { x: number; y: number }>;
+    onStateNodePositionChange? : (nodeId: string, position: { x: number; y: number }) => void;
 }
 
 type CompositionalBSV = Node<compositionalBSVData, 'compositionalBSV'>;
@@ -46,6 +48,8 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
         highlightedTrajectoryMoments,
         showArrows,
         onToggleArrows,
+        stateNodePositions,
+        onStateNodePositionChange,
         isDropTarget} = data;
 
         const isMatrixViewEligible = valueClustering.dimensionIds.length === 2;
@@ -140,6 +144,8 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                           trajectories={trajectories}
                           onCellClick={onCellClick}
                           highlightedTrajectoryMoments={highlightedTrajectoryMoments}
+                          savedNodePositions={stateNodePositions}
+                          onNodePositionChange={onStateNodePositionChange}
                       />
                   )}
                 </div>

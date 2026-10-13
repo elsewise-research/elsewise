@@ -353,6 +353,27 @@ function Editor() {
       });
     };
 
+    const handleStateNodePositionChange = (dimensionIdsKey: string, nodeId: string, position: { x: number; y: number }) => {
+      setWorkspace((prev) => {
+        if (!prev) return prev;
+
+        const stateNodePosition = {
+          ...prev.settings?.stateNodePosition,
+          [dimensionIdsKey]: {
+            ...prev.settings?.stateNodePosition?.[dimensionIdsKey],
+            [nodeId]: position,
+          },
+        };
+
+        const updatedWorkspace: Workspace = {
+          ...prev,
+          settings: { ...prev.settings, stateNodePosition },
+        };
+        persistWorkspace(updatedWorkspace);
+        return updatedWorkspace;
+      });
+    };
+
     // Deleting a dimension also prunes any composite nodePosition entry that referenced
     // it — otherwise that composite's node would keep appearing (with a broken label, since
     // the dimension is gone) and keep getting recomputed with stale data on every future
@@ -782,6 +803,9 @@ function Editor() {
             onMomentClick: handleMomentClick,
             onCellClick: handleCellClick,
             highlightedTrajectoryMoments,
+            stateNodePositions: workspace?.settings?.stateNodePosition?.[dimensionIdsKey],
+            onStateNodePositionChange: (nodeId: string, position: { x: number; y: number }) =>
+              handleStateNodePositionChange(dimensionIdsKey, nodeId, position),
           },
         };
       });
