@@ -8,7 +8,7 @@ export function randomColor(): string {
 export const HIGHLIGHTED_OPACITY = 0.6;
 
 // Opacity applied to a TrajectoryMoment marker when it is NOT in highlightedTrajectoryMoments.
-export const NON_HIGHLIGHTED_OPACITY = 0.2;
+export const NON_HIGHLIGHTED_OPACITY = 0.05;
 
 // Opacity applied to a cell-to-cell arrow in matrix view when exactly one of the two cells
 // it connects is highlighted (both highlighted -> HIGHLIGHTED_OPACITY, neither ->
