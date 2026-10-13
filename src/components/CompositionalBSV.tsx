@@ -12,6 +12,7 @@ const BSVStateMachineCanvas = dynamic(() => import("./BSVStateMachineCanvas"), {
 type compositionalBSVData = {
     dimensionNames : string[];
     dimensionDescriptions : string[];
+    dimensionValuesList : string[][];
     trajectories : Trajectory[];
     valueClustering : ValueClustering;
     trajectoryColorSetting : Record<string, string>;
@@ -32,6 +33,7 @@ type CompositionalBSV = Node<compositionalBSVData, 'compositionalBSV'>;
 export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
     const {dimensionNames,
         dimensionDescriptions,
+        dimensionValuesList,
         trajectories,
         valueClustering,
         trajectoryColorSetting,
@@ -71,15 +73,25 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
         // The crossed valueClustering's keys are composite "rowValue_colValue" strings
         // (per DIMENSION_VALUE_SEPARATOR). Split them back out into the two dimensions'
         // own values so they can be laid out as matrix rows/columns.
-        const rows = new Set<string>();
-        const columns = new Set<string>();
+        const presentRows = new Set<string>();
+        const presentColumns = new Set<string>();
         const momentsByCell = new Map<string, TrajectoryMoment[]>();
         for (const [key, moments] of Object.entries(valueClustering.valueMapping)) {
             const [rowValue, columnValue] = key.split(DIMENSION_VALUE_SEPARATOR);
-            rows.add(rowValue);
-            columns.add(columnValue);
+            presentRows.add(rowValue);
+            presentColumns.add(columnValue);
             momentsByCell.set(`${rowValue}::${columnValue}`, moments);
         }
+
+        // Order rows/columns by their dimension's own values list (so reordering values there
+        // reorders the matrix too), appending anything present in the data but missing from
+        // that list (e.g. stale clustering data) at the end rather than silently dropping it.
+        const orderRowsOrColumns = (present: Set<string>, orderedValues: string[]) => [
+            ...orderedValues.filter((value) => present.has(value)),
+            ...Array.from(present).filter((value) => !orderedValues.includes(value)),
+        ];
+        const rows = orderRowsOrColumns(presentRows, dimensionValuesList[0] ?? []);
+        const columns = orderRowsOrColumns(presentColumns, dimensionValuesList[1] ?? []);
 
         return (
             <div className={`bsv-node${isDropTarget ? " bsv-node--drop-target" : ""}`}>
@@ -110,8 +122,8 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
                 <div className="bsv-viz nodrag">
                   {showMatrixView ? (
                       <BSVDrawingCanvas
-                          values={Array.from(rows)}
-                          columns={Array.from(columns)}
+                          values={rows}
+                          columns={columns}
                           getCellMoments={(rowValue, columnValue) => momentsByCell.get(`${rowValue}::${columnValue}`) ?? []}
                           trajectories={trajectories}
                           trajectoryColorSetting={trajectoryColorSetting}

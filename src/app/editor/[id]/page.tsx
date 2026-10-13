@@ -770,6 +770,7 @@ function Editor() {
           data: {
             dimensionNames: dims.map((dimension, i) => dimension?.name ?? dimensionIds[i]),
             dimensionDescriptions: dims.map((dimension) => dimension?.description ?? ""),
+            dimensionValuesList: dims.map((dimension) => dimension?.values ?? []),
             trajectories,
             valueClustering,
             trajectoryColorSetting,
