@@ -698,6 +698,13 @@ function Editor() {
       if (!id || !selectedBatchId) return;
       getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${selectedBatchId}`).then((result) => {
         setBatchData(result.data);
+        setWorkspace((prev) => {
+          if (!prev) return prev;
+          const updatedWorkspace = ensureTrajectoryColors(prev, result.data.trajectories);
+          if (updatedWorkspace === prev) return prev;
+          persistWorkspace(updatedWorkspace);
+          return updatedWorkspace;
+        });
       });
     }, [id, selectedBatchId]);
 
