@@ -100,6 +100,19 @@
     cursor: pointer;
 }
 
+.bsv-state-machine-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #777;
+    margin-bottom: 4px;
+}
+
+.bsv-state-machine-filter input[type="range"] {
+    flex: 1;
+}
+
 .bsv-viz p {
     color: #777;
 }

@@ -42,6 +42,14 @@ export default function BSVStateMachineCanvas({
     // to onNodePositionChange on drag end so the parent can persist it.
     const [draggedPositions, setDraggedPositions] = useState<Record<string, { x: number; y: number }>>({});
     const dragMovedRef = useRef(false);
+    const [minMoments, setMinMoments] = useState(1);
+
+    // The highest moment count any single state has, regardless of the current filter —
+    // used as the slider's upper bound so it doesn't shrink as the user raises the threshold.
+    const maxPossibleMoments = useMemo(
+        () => Math.max(1, ...Object.values(valueClustering.valueMapping).map((moments) => moments.length)),
+        [valueClustering],
+    );
 
     const { nodes, links } = useMemo(() => {
         const turnOrderByTrajectory = new Map<string, Map<string, number>>();
@@ -62,8 +70,9 @@ export default function BSVStateMachineCanvas({
         }
 
         const simNodes: SimNode[] = Object.entries(valueClustering.valueMapping)
-            .filter(([, moments]) => moments.length > 0)
+            .filter(([, moments]) => moments.length >= minMoments)
             .map(([key, moments]) => ({ id: key, count: moments.length }));
+        const nodeIds = new Set(simNodes.map((node) => node.id));
 
         const edgeKeys = new Set<string>();
         for (const trajectory of trajectories) {
@@ -76,7 +85,7 @@ export default function BSVStateMachineCanvas({
 
                 const fromState = stateByMoment.get(`${fromMoment.trajectoryId}::${fromMoment.turnId}`);
                 const toState = stateByMoment.get(`${toMoment.trajectoryId}::${toMoment.turnId}`);
-                if (!fromState || !toState) continue;
+                if (!fromState || !toState || !nodeIds.has(fromState) || !nodeIds.has(toState)) continue;
 
                 edgeKeys.add(`${fromState}->${toState}`);
             }
@@ -122,7 +131,7 @@ export default function BSVStateMachineCanvas({
         }
 
         return { nodes: simNodes, links: simLinks };
-    }, [valueClustering, trajectories]);
+    }, [valueClustering, trajectories, minMoments]);
 
     const maxCount = Math.max(1, ...nodes.map((n) => n.count));
     const opacityFor = (count: number) =>
@@ -147,154 +156,167 @@ export default function BSVStateMachineCanvas({
     };
 
     return (
-        <Stage width={WIDTH} height={HEIGHT}>
-            <Layer>
-                {links.map((link, index) => {
-                    const sourceId = typeof link.source === "object" ? link.source.id : link.source as string;
-                    const targetId = typeof link.target === "object" ? link.target.id : link.target as string;
-                    const source = nodeById.get(sourceId);
-                    const target = nodeById.get(targetId);
-                    if (!source || !target) return null;
+        <div>
+            <div className="bsv-state-machine-filter">
+                <label htmlFor="min-moments-slider">Min moments: {minMoments}</label>
+                <input
+                    id="min-moments-slider"
+                    type="range"
+                    min={1}
+                    max={maxPossibleMoments}
+                    value={minMoments}
+                    onChange={(e) => setMinMoments(Number(e.target.value))}
+                />
+            </div>
+            <Stage width={WIDTH} height={HEIGHT}>
+                <Layer>
+                    {links.map((link, index) => {
+                        const sourceId = typeof link.source === "object" ? link.source.id : link.source as string;
+                        const targetId = typeof link.target === "object" ? link.target.id : link.target as string;
+                        const source = nodeById.get(sourceId);
+                        const target = nodeById.get(targetId);
+                        if (!source || !target) return null;
 
-                    const sourcePos = positionOf(source);
-                    const targetPos = positionOf(target);
-                    const sx = sourcePos.x, sy = sourcePos.y, tx = targetPos.x, ty = targetPos.y;
+                        const sourcePos = positionOf(source);
+                        const targetPos = positionOf(target);
+                        const sx = sourcePos.x, sy = sourcePos.y, tx = targetPos.x, ty = targetPos.y;
 
-                    // Self-loop: draw a small loop above the node instead of a straight arrow.
-                    if (source.id === target.id) {
-                        const r = radiusFor(source.count);
-                        const loopSize = r * 1.4;
+                        // Self-loop: draw a small loop above the node instead of a straight arrow.
+                        if (source.id === target.id) {
+                            const r = radiusFor(source.count);
+                            const loopSize = r * 1.4;
+                            return (
+                                <Path
+                                    key={`link-${index}`}
+                                    data={`M ${sx - r * 0.5} ${sy - r * 0.9}
+                                           C ${sx - loopSize} ${sy - loopSize * 1.8}, ${sx + loopSize} ${sy - loopSize * 1.8}, ${sx + r * 0.5} ${sy - r * 0.9}`}
+                                    stroke="#999"
+                                    strokeWidth={1.5}
+                                    opacity={0.7}
+                                />
+                            );
+                        }
+
+                        const dx = tx - sx, dy = ty - sy;
+                        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                        const unitX = dx / dist, unitY = dy / dist;
+                        const startMargin = radiusFor(source.count) + 2;
+                        const endMargin = radiusFor(target.count) + 2;
+
                         return (
-                            <Path
+                            <Arrow
                                 key={`link-${index}`}
-                                data={`M ${sx - r * 0.5} ${sy - r * 0.9}
-                                       C ${sx - loopSize} ${sy - loopSize * 1.8}, ${sx + loopSize} ${sy - loopSize * 1.8}, ${sx + r * 0.5} ${sy - r * 0.9}`}
-                                stroke="#999"
+                                points={[
+                                    sx + unitX * startMargin,
+                                    sy + unitY * startMargin,
+                                    tx - unitX * endMargin,
+                                    ty - unitY * endMargin,
+                                ]}
+                                stroke="#111"
+                                fill="#111"
                                 strokeWidth={1.5}
-                                opacity={0.7}
+                                pointerLength={6}
+                                pointerWidth={6}
+                                opacity={(opacityFor(source.count) + opacityFor(target.count)) / 2}
                             />
                         );
-                    }
+                    })}
 
-                    const dx = tx - sx, dy = ty - sy;
-                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    const unitX = dx / dist, unitY = dy / dist;
-                    const startMargin = radiusFor(source.count) + 2;
-                    const endMargin = radiusFor(target.count) + 2;
+                    {nodes.map((node) => (
+                        <Group
+                            key={node.id}
+                            x={positionOf(node).x}
+                            y={positionOf(node).y}
+                            draggable
+                            onDragStart={() => { dragMovedRef.current = false; }}
+                            onDragMove={(e) => {
+                                dragMovedRef.current = true;
+                                setDraggedPositions((prev) => ({ ...prev, [node.id]: { x: e.target.x(), y: e.target.y() } }));
+                            }}
+                            onDragEnd={(e) => {
+                                onNodePositionChange?.(node.id, { x: e.target.x(), y: e.target.y() });
+                            }}
+                            onClick={() => {
+                                // A drag that ends over the node would otherwise also fire a click;
+                                // consume the flag so only that one click is suppressed, not every
+                                // click from then on.
+                                if (dragMovedRef.current) {
+                                    dragMovedRef.current = false;
+                                    return;
+                                }
+                                onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
+                            }}
+                            onTap={() => {
+                                if (dragMovedRef.current) {
+                                    dragMovedRef.current = false;
+                                    return;
+                                }
+                                onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
+                            }}
+                            onMouseEnter={(e) => {
+                                const stage = e.target.getStage();
+                                if (stage) stage.container().style.cursor = "pointer";
+                                setHoveredNodeId(node.id);
+                            }}
+                            onMouseLeave={(e) => {
+                                const stage = e.target.getStage();
+                                if (stage) stage.container().style.cursor = "default";
+                                setHoveredNodeId(null);
+                            }}
+                        >
+                            <Circle
+                                radius={radiusFor(node.count)}
+                                fill="#FFFFFF"
+                                opacity={opacityFor(node.count)}
+                                stroke={hoveredNodeId === node.id ? "#333" : "#000"}
+                                strokeWidth={hoveredNodeId === node.id ? 1.5 : 1}
+                            />
+                            <Text
+                                text={String(node.count)}
+                                fontSize={12}
+                                fontStyle="600"
+                                fill="black"
+                                width={radiusFor(node.count) * 2}
+                                height={radiusFor(node.count) * 2}
+                                offsetX={radiusFor(node.count)}
+                                offsetY={radiusFor(node.count)}
+                                align="center"
+                                verticalAlign="middle"
+                                opacity={opacityFor(node.count)}
+                            />
+                            <Text
+                                text={node.id.split(DIMENSION_VALUE_SEPARATOR).join(", ")}
+                                fontSize={10}
+                                fill="#333"
+                                y={radiusFor(node.count) + 4}
+                                width={120}
+                                offsetX={60}
+                                align="center"
+                            />
+                        </Group>
+                    ))}
 
-                    return (
-                        <Arrow
-                            key={`link-${index}`}
-                            points={[
-                                sx + unitX * startMargin,
-                                sy + unitY * startMargin,
-                                tx - unitX * endMargin,
-                                ty - unitY * endMargin,
-                            ]}
-                            stroke="#111"
-                            fill="#111"
-                            strokeWidth={1.5}
-                            pointerLength={6}
-                            pointerWidth={6}
-                            opacity={(opacityFor(source.count) + opacityFor(target.count)) / 2}
-                        />
-                    );
-                })}
-
-                {nodes.map((node) => (
-                    <Group
-                        key={node.id}
-                        x={positionOf(node).x}
-                        y={positionOf(node).y}
-                        draggable
-                        onDragStart={() => { dragMovedRef.current = false; }}
-                        onDragMove={(e) => {
-                            dragMovedRef.current = true;
-                            setDraggedPositions((prev) => ({ ...prev, [node.id]: { x: e.target.x(), y: e.target.y() } }));
-                        }}
-                        onDragEnd={(e) => {
-                            onNodePositionChange?.(node.id, { x: e.target.x(), y: e.target.y() });
-                        }}
-                        onClick={() => {
-                            // A drag that ends over the node would otherwise also fire a click;
-                            // consume the flag so only that one click is suppressed, not every
-                            // click from then on.
-                            if (dragMovedRef.current) {
-                                dragMovedRef.current = false;
-                                return;
-                            }
-                            onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
-                        }}
-                        onTap={() => {
-                            if (dragMovedRef.current) {
-                                dragMovedRef.current = false;
-                                return;
-                            }
-                            onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
-                        }}
-                        onMouseEnter={(e) => {
-                            const stage = e.target.getStage();
-                            if (stage) stage.container().style.cursor = "pointer";
-                            setHoveredNodeId(node.id);
-                        }}
-                        onMouseLeave={(e) => {
-                            const stage = e.target.getStage();
-                            if (stage) stage.container().style.cursor = "default";
-                            setHoveredNodeId(null);
-                        }}
-                    >
-                        <Circle
-                            radius={radiusFor(node.count)}
-                            fill="#FFFFFF"
-                            opacity={opacityFor(node.count)}
-                            stroke={hoveredNodeId === node.id ? "#333" : "#000"}
-                            strokeWidth={hoveredNodeId === node.id ? 1.5 : 1}
-                        />
-                        <Text
-                            text={String(node.count)}
-                            fontSize={12}
-                            fontStyle="600"
-                            fill="black"
-                            width={radiusFor(node.count) * 2}
-                            height={radiusFor(node.count) * 2}
-                            offsetX={radiusFor(node.count)}
-                            offsetY={radiusFor(node.count)}
-                            align="center"
-                            verticalAlign="middle"
-                            opacity={opacityFor(node.count)}
-                        />
-                        <Text
-                            text={node.id.split(DIMENSION_VALUE_SEPARATOR).join(", ")}
-                            fontSize={10}
-                            fill="#333"
-                            y={radiusFor(node.count) + 4}
-                            width={120}
-                            offsetX={60}
-                            align="center"
-                        />
-                    </Group>
-                ))}
-
-                {/* A big red arrow pointing at any node whose moments are all highlighted. */}
-                {nodes.filter((node) => isFullyHighlighted(node.id)).map((node) => {
-                    const { x, y } = positionOf(node);
-                    const r = radiusFor(node.count);
-                    const dirX = Math.SQRT1_2, dirY = -Math.SQRT1_2; // up-right, pointing down-left into the node
-                    const tail = { x: x + dirX * (r + 54), y: y + dirY * (r + 54) };
-                    const head = { x: x + dirX * (r + 6), y: y + dirY * (r + 6) };
-                    return (
-                        <Arrow
-                            key={`highlight-arrow-${node.id}`}
-                            points={[tail.x, tail.y, head.x, head.y]}
-                            stroke="#e11d2e"
-                            fill="#e11d2e"
-                            strokeWidth={4}
-                            pointerLength={14}
-                            pointerWidth={14}
-                        />
-                    );
-                })}
-            </Layer>
-        </Stage>
+                    {/* A big red arrow pointing at any node whose moments are all highlighted. */}
+                    {nodes.filter((node) => isFullyHighlighted(node.id)).map((node) => {
+                        const { x, y } = positionOf(node);
+                        const r = radiusFor(node.count);
+                        const dirX = Math.SQRT1_2, dirY = -Math.SQRT1_2; // up-right, pointing down-left into the node
+                        const tail = { x: x + dirX * (r + 54), y: y + dirY * (r + 54) };
+                        const head = { x: x + dirX * (r + 6), y: y + dirY * (r + 6) };
+                        return (
+                            <Arrow
+                                key={`highlight-arrow-${node.id}`}
+                                points={[tail.x, tail.y, head.x, head.y]}
+                                stroke="#e11d2e"
+                                fill="#e11d2e"
+                                strokeWidth={4}
+                                pointerLength={14}
+                                pointerWidth={14}
+                            />
+                        );
+                    })}
+                </Layer>
+            </Stage>
+        </div>
     );
 }
