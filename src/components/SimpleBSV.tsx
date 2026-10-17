@@ -179,7 +179,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                             const moments = valueClustering.valueMapping[value] ?? [];
                             return (
                                 <tr key={value}>
-                                    <td className="bsv-value-clustering" onClick={() => onCellClick(moments)}>
+                                    <td className="bsv-value-clustering" onDoubleClick={() => onCellClick(moments)}>
                                     <div className="bsv-value-label">
                                         {editingValue === value ? (
                                             <input

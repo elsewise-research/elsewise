@@ -205,8 +205,8 @@ export default function BSVDrawingCanvas({
                             fill="#eee"
                             cornerRadius={10}
                             opacity={getCellMoments(value, column).length > 0 ? 1 : EMPTY_CELL_OPACITY}
-                            onClick={() => onCellClick?.(getCellMoments(value, column))}
-                            onTap={() => onCellClick?.(getCellMoments(value, column))}
+                            onDblClick={() => onCellClick?.(getCellMoments(value, column))}
+                            onDblTap={() => onCellClick?.(getCellMoments(value, column))}
                             onMouseEnter={(e) => {
                                 const stage = e.target.getStage();
                                 if (stage) stage.container().style.cursor = "pointer";

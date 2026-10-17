@@ -236,7 +236,7 @@ export default function BSVStateMachineCanvas({
                             onDragEnd={(e) => {
                                 onNodePositionChange?.(node.id, { x: e.target.x(), y: e.target.y() });
                             }}
-                            onClick={() => {
+                            onDblClick={() => {
                                 // A drag that ends over the node would otherwise also fire a click;
                                 // consume the flag so only that one click is suppressed, not every
                                 // click from then on.
@@ -246,7 +246,7 @@ export default function BSVStateMachineCanvas({
                                 }
                                 onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
                             }}
-                            onTap={() => {
+                            onDblTap={() => {
                                 if (dragMovedRef.current) {
                                     dragMovedRef.current = false;
                                     return;
