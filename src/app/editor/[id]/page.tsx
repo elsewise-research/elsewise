@@ -76,6 +76,40 @@ function compositeDimensionIdsList(nodePosition: Record<string, { x: number; y: 
       .map((key) => key.split("|"));
 }
 
+// Rough footprint of a BSV node, used only to space freshly-placed nodes apart from each
+// other (see findFreePosition) — doesn't need to match the real rendered size exactly.
+const DEFAULT_NODE_WIDTH = 380;
+const DEFAULT_NODE_HEIGHT = 360;
+
+function overlapsExisting(candidate: { x: number; y: number }, taken: { x: number; y: number }[]): boolean {
+    return taken.some(
+      (t) => Math.abs(candidate.x - t.x) < DEFAULT_NODE_WIDTH && Math.abs(candidate.y - t.y) < DEFAULT_NODE_HEIGHT,
+    );
+}
+
+// Spiral/ring search outward from `center` for the nearest point that doesn't overlap any
+// position in `taken`, so newly-added nodes land near the viewport center instead of off
+// in a fixed grid, while still spreading apart from each other and from existing nodes.
+function findFreePosition(center: { x: number; y: number }, taken: { x: number; y: number }[]): { x: number; y: number } {
+    const RING_STEP = 60;
+    const MAX_RINGS = 20;
+
+    if (!overlapsExisting(center, taken)) return center;
+
+    for (let ring = 1; ring <= MAX_RINGS; ring++) {
+      const pointsOnRing = 8 * ring;
+      for (let i = 0; i < pointsOnRing; i++) {
+        const angle = (2 * Math.PI * i) / pointsOnRing;
+        const candidate = {
+          x: center.x + Math.cos(angle) * ring * RING_STEP,
+          y: center.y + Math.sin(angle) * ring * RING_STEP,
+        };
+        if (!overlapsExisting(candidate, taken)) return candidate;
+      }
+    }
+    return center;
+}
+
 // Clusters trajectory moments in `batchData` into each dimension's values (scoped to
 // dimensionIds if given, otherwise every dimension). Returns only the freshly computed
 // entries — NOT merged with batchData.valueClusterings — so callers can merge them in via
@@ -117,7 +151,7 @@ function Editor() {
     const [clusteringBatchId, setClusteringBatchId] = useState<string | null>(null);
     const [ingestionToken, setIngestionToken] = useState<string | null>(null);
     const [isIngestionDialogOpen, setIsIngestionDialogOpen] = useState(false);
-    const reactFlowWrapper = useRef(null);
+    const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [isAddDimensionOpen, setIsAddDimensionOpen] = useState(false);
@@ -135,7 +169,7 @@ function Editor() {
       }
     };
     const [selectedTurnOrder, setSelectedTurnOrder] = useState<number | "all">("all");
-    const { getIntersectingNodes } = useReactFlow();
+    const { getIntersectingNodes, screenToFlowPosition } = useReactFlow();
 
     const batchesRef = useRef<Batch[]>([]);
     useEffect(() => { batchesRef.current = batches; }, [batches]);
@@ -747,16 +781,32 @@ function Editor() {
       const valueClusterings = batchData?.valueClusterings ?? [];
       const trajectories = batchData?.trajectories ?? [];
 
-      const simpleNodes = dimensions.map((dimension, index) => {
+      // Nodes with no saved position yet (freshly added) get placed near the current
+      // viewport center instead of a fixed grid, spaced apart from everything already
+      // placed (saved or just-placed-in-this-pass) via findFreePosition.
+      const wrapperRect = reactFlowWrapper.current?.getBoundingClientRect();
+      const viewportCenter = wrapperRect
+        ? screenToFlowPosition({ x: wrapperRect.left + wrapperRect.width / 2, y: wrapperRect.top + wrapperRect.height / 2 })
+        : { x: 0, y: 0 };
+      const takenPositions = Object.values(nodePosition);
+
+      const nextPositionFor = (key: string) => {
+        const saved = nodePosition[key];
+        if (saved) return saved;
+        const position = findFreePosition(viewportCenter, takenPositions);
+        takenPositions.push(position);
+        return position;
+      };
+
+      const simpleNodes = dimensions.map((dimension) => {
         const valueClustering = valueClusterings.find(
           (vc) => vc.dimensionIds.length === 1 && vc.dimensionIds[0] === dimension.id,
         ) ?? emptyValueClustering(dimension);
-        const savedPosition = nodePosition[dimension.id];
 
         return {
           id: dimension.id,
           type: "simpleBSV",
-          position: savedPosition ?? { x: index * 400, y: 0 },
+          position: nextPositionFor(dimension.id),
           data: {
             dimensionName: dimension.name,
             dimensionDescription: dimension.description,
@@ -782,19 +832,18 @@ function Editor() {
         };
       });
 
-      const compositionalNodes = compositeDimensionIdsList(nodePosition).map((dimensionIds, index) => {
+      const compositionalNodes = compositeDimensionIdsList(nodePosition).map((dimensionIds) => {
         const dimensionIdsKey = dimensionIds.join("|");
         const sortedKey = dimensionIdsKeyOf(dimensionIds);
         const valueClustering = valueClusterings.find(
           (vc) => vc.dimensionIds.length > 1 && dimensionIdsKeyOf(vc.dimensionIds) === sortedKey,
         ) ?? emptyCompositeClustering(dimensionIds);
-        const savedPosition = nodePosition[dimensionIdsKey];
         const dims = dimensionIds.map((dimensionId) => dimensions.find((dimension) => dimension.id === dimensionId));
 
         return {
           id: dimensionIdsKey,
           type: "compositionalBSV",
-          position: savedPosition ?? { x: index * 400, y: 500 },
+          position: nextPositionFor(dimensionIdsKey),
           data: {
             dimensionNames: dims.map((dimension, i) => dimension?.name ?? dimensionIds[i]),
             dimensionDescriptions: dims.map((dimension) => dimension?.description ?? ""),
@@ -818,7 +867,7 @@ function Editor() {
       });
 
       setNodes([...simpleNodes, ...compositionalNodes]);
-    }, [workspace, batchData, trajectoryColorSetting, clusteringDimensionIds]);
+    }, [workspace, batchData, trajectoryColorSetting, clusteringDimensionIds, screenToFlowPosition]);
 
     useEffect(() => {
       setNodes((current) =>
