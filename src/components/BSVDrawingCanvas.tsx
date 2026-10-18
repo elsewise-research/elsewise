@@ -65,13 +65,20 @@ export default function BSVDrawingCanvas({
         isHighlighted(trajectoryId, turnId) ? HIGHLIGHTED_OPACITY : NON_HIGHLIGHTED_OPACITY;
     const [hovered, setHovered] = useState<HoverInfo | null>(null);
 
+    // getCellMoments can be an O(moments) filter (see SimpleBSV's expanded view), so it's
+    // called exactly once per cell here and the result reused below, instead of once per cell
+    // for each of maxMomentsPerCell/momentPositions/momentCell/the empty-cell check separately.
+    const cellMoments: TrajectoryMoment[][][] = values.map((value) =>
+        columns.map((column) => getCellMoments(value, column)),
+    );
+
     // Grow cells beyond the minimum so the one with the most moments in it still fits them
     // all, wrapping onto multiple lines (roughly as many per line as lines) instead of
     // stretching a single row — that's what keeps the cell square.
     const spacing = CIRCLE_RADIUS * 2 + CIRCLE_GAP;
-    const maxMomentsPerCell = Math.max(
+    const maxMomentsPerCell = cellMoments.reduce(
+        (max, row) => row.reduce((rowMax, moments) => Math.max(rowMax, moments.length), max),
         1,
-        ...values.flatMap((value) => columns.map((column) => getCellMoments(value, column).length)),
     );
     const momentsPerRow = Math.max(1, Math.ceil(Math.sqrt(maxMomentsPerCell)));
     const momentRows = Math.ceil(maxMomentsPerCell / momentsPerRow);
@@ -85,11 +92,13 @@ export default function BSVDrawingCanvas({
 
     // Lay out the moments belonging to each (row, column) cell in a grid, wrapping onto a new
     // line every `momentsPerRow` moments (each line re-centered for its own moment count, and
-    // the whole grid centered vertically within the cell).
+    // the whole grid centered vertically within the cell) — and, in the same pass, record
+    // which (row, col) cell each trajectory moment falls in, keyed to the cell rather than the
+    // moment's own on-screen spot.
     const momentPositions = new Map<string, { x: number; y: number }>();
-    values.forEach((value, rowIndex) => {
-        columns.forEach((column, colIndex) => {
-            const moments = getCellMoments(value, column);
+    const momentCell = new Map<string, { rowIndex: number; colIndex: number }>();
+    cellMoments.forEach((rowMoments, rowIndex) => {
+        rowMoments.forEach((moments, colIndex) => {
             if (moments.length === 0) return;
 
             const { x: cx, y: cy } = cellCenter(rowIndex, colIndex);
@@ -103,19 +112,10 @@ export default function BSVDrawingCanvas({
 
                 const x = cx - rowWidth / 2 + col * spacing + spacing / 2;
                 const y = cy - gridHeight / 2 + row * spacing + spacing / 2;
-                momentPositions.set(`${moment.trajectoryId}::${moment.turnId}`, { x, y });
+                const key = `${moment.trajectoryId}::${moment.turnId}`;
+                momentPositions.set(key, { x, y });
+                momentCell.set(key, { rowIndex, colIndex });
             });
-        });
-    });
-
-    // Which (row, col) cell each trajectory moment falls in — built the same way as
-    // momentPositions, but keyed to the cell rather than the moment's own on-screen spot.
-    const momentCell = new Map<string, { rowIndex: number; colIndex: number }>();
-    values.forEach((value, rowIndex) => {
-        columns.forEach((column, colIndex) => {
-            for (const moment of getCellMoments(value, column)) {
-                momentCell.set(`${moment.trajectoryId}::${moment.turnId}`, { rowIndex, colIndex });
-            }
         });
     });
 
@@ -146,9 +146,7 @@ export default function BSVDrawingCanvas({
     // A cell counts as highlighted if any moment in it is (or, same as markerOpacity, if
     // nothing is highlighted at all, in which case every cell counts).
     const cellIsHighlighted = (rowIndex: number, colIndex: number) =>
-        getCellMoments(values[rowIndex], columns[colIndex]).some(
-            (moment) => isHighlighted(moment.trajectoryId, moment.turnId),
-        );
+        cellMoments[rowIndex][colIndex].some((moment) => isHighlighted(moment.trajectoryId, moment.turnId));
 
     // One arrow per distinct (fromCell -> toCell) pair, merging every trajectory's consecutive
     // turns that cross that same pair of cells. Its opacity depends only on whether the two
@@ -194,8 +192,8 @@ export default function BSVDrawingCanvas({
         <Stage width={width} height={height}>
             <Layer>
                 {/* clickable cell areas: highlight every moment in this (value, column) combination */}
-                {values.map((value, rowIndex) =>
-                    columns.map((column, colIndex) => (
+                {cellMoments.map((rowMoments, rowIndex) =>
+                    rowMoments.map((moments, colIndex) => (
                         <Rect
                             key={`cell-${rowIndex}-${colIndex}`}
                             x={LABEL_WIDTH + colIndex * cellSize + CELL_MARGIN}
@@ -204,9 +202,9 @@ export default function BSVDrawingCanvas({
                             height={cellSize - CELL_MARGIN * 2}
                             fill="#eee"
                             cornerRadius={10}
-                            opacity={getCellMoments(value, column).length > 0 ? 1 : EMPTY_CELL_OPACITY}
-                            onDblClick={() => onCellClick?.(getCellMoments(value, column))}
-                            onDblTap={() => onCellClick?.(getCellMoments(value, column))}
+                            opacity={moments.length > 0 ? 1 : EMPTY_CELL_OPACITY}
+                            onDblClick={() => onCellClick?.(moments)}
+                            onDblTap={() => onCellClick?.(moments)}
                             onMouseEnter={(e) => {
                                 const stage = e.target.getStage();
                                 if (stage) stage.container().style.cursor = "pointer";

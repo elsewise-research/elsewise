@@ -47,9 +47,16 @@ export default function BSVStateMachineCanvas({
     // The highest moment count any single state has, regardless of the current filter —
     // used as the slider's upper bound so it doesn't shrink as the user raises the threshold.
     const maxPossibleMoments = useMemo(
-        () => Math.max(1, ...Object.values(valueClustering.valueMapping).map((moments) => moments.length)),
+        () => Object.values(valueClustering.valueMapping).reduce((max, moments) => Math.max(max, moments.length), 1),
         [valueClustering],
     );
+
+    // minMoments is local state that persists across a valueClustering change (e.g. switching
+    // batches, or re-clustering) since this component doesn't remount — clamp it at use time
+    // instead of resetting it, so a threshold set on a busier batch doesn't filter out every
+    // node on a sparser one, but still comes back once the user returns to a batch where it's
+    // valid again, rather than being reset for good.
+    const effectiveMinMoments = Math.min(minMoments, maxPossibleMoments);
 
     const { nodes, links } = useMemo(() => {
         const turnOrderByTrajectory = new Map<string, Map<string, number>>();
@@ -70,7 +77,7 @@ export default function BSVStateMachineCanvas({
         }
 
         const simNodes: SimNode[] = Object.entries(valueClustering.valueMapping)
-            .filter(([, moments]) => moments.length >= minMoments)
+            .filter(([, moments]) => moments.length >= effectiveMinMoments)
             .map(([key, moments]) => ({ id: key, count: moments.length }));
         const nodeIds = new Set(simNodes.map((node) => node.id));
 
@@ -131,9 +138,9 @@ export default function BSVStateMachineCanvas({
         }
 
         return { nodes: simNodes, links: simLinks };
-    }, [valueClustering, trajectories, minMoments]);
+    }, [valueClustering, trajectories, effectiveMinMoments]);
 
-    const maxCount = Math.max(1, ...nodes.map((n) => n.count));
+    const maxCount = nodes.reduce((max, n) => Math.max(max, n.count), 1);
     const opacityFor = (count: number) =>
         maxCount === 1 ? 1 : MIN_OPACITY + (1 - MIN_OPACITY) * ((count - 1) / (maxCount - 1));
     const radiusFor = (count: number) =>
@@ -143,28 +150,35 @@ export default function BSVStateMachineCanvas({
     const positionOf = (node: SimNode) =>
         draggedPositions[node.id] ?? savedNodePositions[node.id] ?? { x: node.x!, y: node.y! };
 
-    // True only when something is actually highlighted AND every one of this state's moments
-    // is part of it — not when nothing is highlighted at all (that would flag every node).
-    const isFullyHighlighted = (nodeId: string) => {
-        if (highlightedTrajectoryMoments.length === 0) return false;
-        const moments = valueClustering.valueMapping[nodeId] ?? [];
-        return moments.length > 0 && moments.every((moment) =>
-            highlightedTrajectoryMoments.some(
-                (highlighted) => highlighted.trajectoryId === moment.trajectoryId && highlighted.turnId === moment.turnId,
-            ),
+    // Which states (valueMapping keys) have every one of their moments highlighted — not when
+    // nothing is highlighted at all (that would flag every node). Memoized (and backed by a
+    // Set instead of a per-moment .some() scan) since this only needs to change when the
+    // clustering or the highlighted set changes, not on every render (e.g. a drag-move frame
+    // that only updates draggedPositions).
+    const fullyHighlightedNodeIds = useMemo(() => {
+        if (highlightedTrajectoryMoments.length === 0) return new Set<string>();
+        const highlightedKeys = new Set(
+            highlightedTrajectoryMoments.map((moment) => `${moment.trajectoryId}::${moment.turnId}`),
         );
-    };
+        const result = new Set<string>();
+        for (const [nodeId, moments] of Object.entries(valueClustering.valueMapping)) {
+            if (moments.length > 0 && moments.every((moment) => highlightedKeys.has(`${moment.trajectoryId}::${moment.turnId}`))) {
+                result.add(nodeId);
+            }
+        }
+        return result;
+    }, [valueClustering, highlightedTrajectoryMoments]);
 
     return (
         <div>
             <div className="bsv-state-machine-filter">
-                <label htmlFor="min-moments-slider">Min moments: {minMoments}</label>
+                <label htmlFor="min-moments-slider">Min moments: {effectiveMinMoments}</label>
                 <input
                     id="min-moments-slider"
                     type="range"
                     min={1}
                     max={maxPossibleMoments}
-                    value={minMoments}
+                    value={effectiveMinMoments}
                     onChange={(e) => setMinMoments(Number(e.target.value))}
                 />
             </div>
@@ -235,6 +249,13 @@ export default function BSVStateMachineCanvas({
                             }}
                             onDragEnd={(e) => {
                                 onNodePositionChange?.(node.id, { x: e.target.x(), y: e.target.y() });
+                                // Cleared asynchronously, not here synchronously: a drag-release can
+                                // trigger a spurious trailing dblclick/dbltap in the same tick, which
+                                // still needs to see this as true to be suppressed below. But if no
+                                // such spurious event follows this drag, the flag must not stay stuck
+                                // true forever — that would silently swallow the next *real*
+                                // double-click on this node.
+                                setTimeout(() => { dragMovedRef.current = false; }, 0);
                             }}
                             onDblClick={() => {
                                 // A drag that ends over the node would otherwise also fire a click;
@@ -297,7 +318,7 @@ export default function BSVStateMachineCanvas({
                     ))}
 
                     {/* A big red arrow pointing at any node whose moments are all highlighted. */}
-                    {nodes.filter((node) => isFullyHighlighted(node.id)).map((node) => {
+                    {nodes.filter((node) => fullyHighlightedNodeIds.has(node.id)).map((node) => {
                         const { x, y } = positionOf(node);
                         const r = radiusFor(node.count);
                         const dirX = Math.SQRT1_2, dirY = -Math.SQRT1_2; // up-right, pointing down-left into the node

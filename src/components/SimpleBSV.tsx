@@ -1,10 +1,11 @@
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Rows3, LayoutGrid, Trash2, Group, Eye, EyeOff, Pencil, ChevronUp, ChevronDown, Plus } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
 import { HIGHLIGHTED_OPACITY, NON_HIGHLIGHTED_OPACITY } from "@/utils/color";
+import { orderByDimensionValues, sanitizeDimensionValue } from "@/utils/dimension";
 
 import "./styles/canvas.css"
 
@@ -64,21 +65,56 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
     const [editingValue, setEditingValue] = useState<string | null>(null);
     const [editDraft, setEditDraft] = useState("");
     const [newValueDraft, setNewValueDraft] = useState("");
+    // Set as soon as an edit session is resolved (committed or cancelled), so the native blur
+    // that removing the (still-focused) input triggers — which would otherwise re-invoke
+    // commitEdit a second time (e.g. once from Enter and again from the blur that follows it,
+    // or once from Escape's cancelEdit and again from its own follow-on blur) — can tell the
+    // session is already done and skip acting again.
+    const editResolvedRef = useRef(false);
 
     const startEditing = (value: string) => {
+        editResolvedRef.current = false;
         setEditingValue(value);
         setEditDraft(value);
     };
 
     const commitEdit = (value: string) => {
+        if (editResolvedRef.current) return;
+        editResolvedRef.current = true;
         setEditingValue(null);
         const trimmed = editDraft.trim();
-        if (trimmed && trimmed !== value) onRenameValue(value, trimmed);
+        if (!trimmed || trimmed === value) return;
+
+        // Checked here (not just left to onRenameValue's own silent no-op) so the user sees
+        // why nothing happened, instead of the edit appearing to close successfully while the
+        // value quietly stays unchanged underneath.
+        if (!sanitizeDimensionValue(trimmed)) {
+            window.alert(`"${trimmed}" isn't a valid value (it's only made of "%" characters, which are reserved) — rename not applied.`);
+            return;
+        }
+        onRenameValue(value, trimmed);
+    };
+
+    const cancelEdit = () => {
+        if (editResolvedRef.current) return;
+        editResolvedRef.current = true;
+        setEditingValue(null);
     };
 
     const commitAdd = () => {
         const trimmed = newValueDraft.trim();
         if (!trimmed) return;
+
+        const sanitized = sanitizeDimensionValue(trimmed);
+        if (!sanitized) {
+            window.alert(`"${trimmed}" isn't a valid value (it's only made of "%" characters, which are reserved).`);
+            return;
+        }
+        if (dimensionValues.includes(sanitized)) {
+            window.alert(`"${sanitized}" already exists as a value.`);
+            return;
+        }
+
         onAddValue(trimmed);
         setNewValueDraft("");
     };
@@ -130,10 +166,16 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             }}
             title={`trajectoryId: ${moment.trajectoryId}\nturnId: ${moment.turnId}`}
             onClick={(e) => {
-                // Prevent bubbling to the containing cell's onClick, which would
+                // Prevent bubbling to the containing cell's onDoubleClick, which would
                 // otherwise immediately override this moment-scoped highlight.
                 e.stopPropagation();
                 onMomentClick(moment);
+            }}
+            onDoubleClick={(e) => {
+                // A native dblclick still fires (and bubbles) even though the click above
+                // stopped propagating — stop this one too so double-clicking a marker can't
+                // also trigger the cell's onCellClick.
+                e.stopPropagation();
             }}
         >
             {getTurnOrder(moment)}
@@ -148,6 +190,19 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                 .filter((order): order is number => order !== undefined)
         )
     ).sort((a, b) => a - b);
+
+    // Order rows/columns by the dimension's own values list (so reordering values in compact
+    // view reorders the expanded view too), appending anything present in the data but
+    // missing from that list (e.g. stale clustering data left over from another batch) at the
+    // end rather than silently dropping it.
+    const valueMappingKeys = Object.keys(valueClustering.valueMapping);
+    const columns = orderByDimensionValues(valueMappingKeys, dimensionValues);
+
+    // The compact view's row list additionally includes every current dimension value that
+    // hasn't been clustered in this batch yet (e.g. just added, or a batch that predates it)
+    // as an empty row, rather than hiding it entirely until the next re-cluster — unlike
+    // `columns` above, which only needs to show values the data already has.
+    const compactRowValues = orderByDimensionValues(new Set([...valueMappingKeys, ...dimensionValues]), dimensionValues);
 
     return (
         <div className={`bsv-node${isDropTarget ? " bsv-node--drop-target" : ""}`}>
@@ -175,8 +230,10 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             ) : compactView ? (
                 <table className="bsv-table">
                     <tbody>
-                        {dimensionValues.map((value, index) => {
+                        {compactRowValues.map((value) => {
                             const moments = valueClustering.valueMapping[value] ?? [];
+                            const indexInDimension = dimensionValues.indexOf(value);
+                            const isStale = indexInDimension === -1;
                             return (
                                 <tr key={value}>
                                     <td className="bsv-value-clustering" onDoubleClick={() => onCellClick(moments)}>
@@ -191,26 +248,37 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                                                 onBlur={() => commitEdit(value)}
                                                 onKeyDown={(e) => {
                                                     if (e.key === "Enter") commitEdit(value);
-                                                    if (e.key === "Escape") setEditingValue(null);
+                                                    if (e.key === "Escape") cancelEdit();
                                                 }}
                                             />
                                         ) : (
-                                            <p>{value}</p>
+                                            <p
+                                                className={isStale ? "bsv-value-label--stale" : undefined}
+                                                title={isStale ? "Not part of this dimension's current values — likely left over from a rename/delete made while viewing a different batch. Re-cluster to clear it." : undefined}
+                                            >
+                                                {value}
+                                            </p>
                                         )}
-                                        <div className="bsv-value-actions" onClick={(e) => e.stopPropagation()}>
-                                            <button onClick={() => onMoveValue(value, "up")} disabled={index === 0} title="Move value up">
-                                                <ChevronUp size={12} />
-                                            </button>
-                                            <button onClick={() => onMoveValue(value, "down")} disabled={index === dimensionValues.length - 1} title="Move value down">
-                                                <ChevronDown size={12} />
-                                            </button>
-                                            <button onClick={() => startEditing(value)} title="Rename value">
-                                                <Pencil size={12} />
-                                            </button>
-                                            <button onClick={() => onDeleteValue(value)} title="Delete value">
-                                                <Trash2 size={12} />
-                                            </button>
-                                        </div>
+                                        {!isStale && (
+                                            <div
+                                                className="bsv-value-actions"
+                                                onClick={(e) => e.stopPropagation()}
+                                                onDoubleClick={(e) => e.stopPropagation()}
+                                            >
+                                                <button onClick={() => onMoveValue(value, "up")} disabled={indexInDimension === 0} title="Move value up">
+                                                    <ChevronUp size={12} />
+                                                </button>
+                                                <button onClick={() => onMoveValue(value, "down")} disabled={indexInDimension === dimensionValues.length - 1} title="Move value down">
+                                                    <ChevronDown size={12} />
+                                                </button>
+                                                <button onClick={() => startEditing(value)} title="Rename value">
+                                                    <Pencil size={12} />
+                                                </button>
+                                                <button onClick={() => onDeleteValue(value)} title="Delete value">
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="bsv-moments">
                                         {moments.map(renderMoment)}
@@ -238,7 +306,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
             ) : (
                 <BSVDrawingCanvas
                     values={distinctTurnOrders.map(String)}
-                    columns={Object.keys(valueClustering.valueMapping)}
+                    columns={columns}
                     rowLabel={(row) => `step ${row}`}
                     cornerLabel="Step"
                     getCellMoments={(rowValue, columnValue) =>

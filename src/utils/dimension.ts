@@ -1,8 +1,31 @@
-import { Workspace } from "@/models/Workspace";
+import { Workspace, WorkspaceSetting } from "@/models/Workspace";
 import { Dimension, DimensionId } from "@/models/Dimension";
 import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
 
 const momentKey = (moment: TrajectoryMoment) => `${moment.trajectoryId}::${moment.turnId}`;
+
+// Sanitizes a user- or LLM-provided string before it becomes a dimension value:
+// DIMENSION_VALUE_SEPARATOR is used positionally to split composite keys back into each
+// dimension's own value (see renameDimensionValue/CompositionalBSV), so a value containing it
+// would corrupt that split for any composite built from this dimension. Used everywhere a
+// value can originate from free text — manual rename/add, initial dimension creation, and LLM
+// extraction — not just the two mutators in this file.
+export function sanitizeDimensionValue(value: string): string {
+    return value.split(DIMENSION_VALUE_SEPARATOR).join("").trim();
+}
+
+// Orders `present` values by `orderedValues` (typically a dimension's own `values` list, so
+// reordering values there reorders rows/columns built from it too), appending anything
+// present in the data but missing from that list (e.g. stale clustering data left behind by a
+// rename/delete made while viewing a different batch) at the end rather than silently
+// dropping it.
+export function orderByDimensionValues(present: Iterable<string>, orderedValues: string[]): string[] {
+    const presentSet = present instanceof Set ? present : new Set(present);
+    return [
+        ...orderedValues.filter((value) => presentSet.has(value)),
+        ...Array.from(presentSet).filter((value) => !orderedValues.includes(value)),
+    ];
+}
 
 // Order-independent identity for a set of dimension ids — two ValueClusterings span the
 // same combination iff their dimensionIds produce the same key here.
@@ -123,14 +146,20 @@ export function renameDimensionValue(
     oldValue: string,
     newValue: string,
 ): { dimension: Dimension; valueClusterings: ValueClustering[] } {
-    const trimmed = newValue.trim();
+    const trimmed = sanitizeDimensionValue(newValue);
     if (!trimmed || trimmed === oldValue || !dimension.values.includes(oldValue)) {
         return { dimension, valueClusterings };
     }
 
+    // Renaming onto an existing different value merges into it (matching how the valueMapping
+    // keys below merge their moments when the rename makes two keys collide) instead of
+    // producing a duplicate entry in `values`.
+    const collidesWithExisting = dimension.values.some((value) => value !== oldValue && value === trimmed);
     const updatedDimension: Dimension = {
         ...dimension,
-        values: dimension.values.map((value) => (value === oldValue ? trimmed : value)),
+        values: collidesWithExisting
+            ? dimension.values.filter((value) => value !== oldValue)
+            : dimension.values.map((value) => (value === oldValue ? trimmed : value)),
     };
 
     const updatedValueClusterings = valueClusterings.map((vc) => {
@@ -191,7 +220,7 @@ export function addDimensionValue(
     valueClusterings: ValueClustering[],
     value: string,
 ): { dimension: Dimension; valueClusterings: ValueClustering[] } {
-    const trimmed = value.trim();
+    const trimmed = sanitizeDimensionValue(value);
     if (!trimmed || dimension.values.includes(trimmed)) {
         return { dimension, valueClusterings };
     }
@@ -228,5 +257,56 @@ export function mergeValueClusterings(existing: ValueClustering[], fresh: ValueC
     const freshKeys = new Set(fresh.map((vc) => dimensionIdsKeyOf(vc.dimensionIds)));
     const preserved = existing.filter((vc) => !freshKeys.has(dimensionIdsKeyOf(vc.dimensionIds)));
     return [...preserved, ...fresh];
+}
+
+// Keeps workspace.settings.stateNodePosition in sync with a dimension value being renamed
+// (`newValue` given) or deleted (`newValue` null): each stateNodePosition key is itself a
+// composite "value1%value2" nodeId (see BSVStateMachineCanvas), positioned the same way
+// valueClustering keys are, so this mirrors renameDimensionValue/deleteDimensionValue's key
+// rebuild rather than leaving a stale, orphaned entry (or losing a user-dragged position)
+// behind. A no-op (same reference) if `dimensionId` isn't part of any composite here, or no
+// entry's key actually contains `oldValue` at that dimension's position.
+export function migrateStateNodePositions(
+    stateNodePosition: WorkspaceSetting["stateNodePosition"],
+    dimensionId: DimensionId,
+    oldValue: string,
+    newValue: string | null,
+): WorkspaceSetting["stateNodePosition"] {
+    if (!stateNodePosition) return stateNodePosition;
+
+    let changed = false;
+    const updated: NonNullable<WorkspaceSetting["stateNodePosition"]> = {};
+    for (const [dimensionIdsKey, positions] of Object.entries(stateNodePosition)) {
+        const dimIndex = dimensionIdsKey.split("|").indexOf(dimensionId);
+        if (dimIndex === -1) {
+            updated[dimensionIdsKey] = positions;
+            continue;
+        }
+
+        const newPositions: Record<string, { x: number; y: number }> = {};
+        const renamedEntries: { newKey: string; position: { x: number; y: number } }[] = [];
+        for (const [nodeId, position] of Object.entries(positions)) {
+            const parts = nodeId.split(DIMENSION_VALUE_SEPARATOR);
+            if (parts[dimIndex] !== oldValue) {
+                newPositions[nodeId] = position;
+                continue;
+            }
+            changed = true;
+            if (newValue === null) continue; // value deleted: drop its saved position
+            parts[dimIndex] = newValue;
+            renamedEntries.push({ newKey: parts.join(DIMENSION_VALUE_SEPARATOR), position });
+        }
+        // A rename can collide with an already-saved position for the target key (the same
+        // merge-on-collision case renameDimensionValue handles for valueMapping) — unlike
+        // moments, two positions can't be merged, so keep whichever was already saved for that
+        // key (the node staying put) rather than letting Object.entries's iteration order
+        // silently decide which one wins.
+        for (const { newKey, position } of renamedEntries) {
+            if (!(newKey in newPositions)) newPositions[newKey] = position;
+        }
+        updated[dimensionIdsKey] = newPositions;
+    }
+
+    return changed ? updated : stateNodePosition;
 }
 

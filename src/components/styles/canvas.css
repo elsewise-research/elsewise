@@ -124,6 +124,13 @@
     gap: 4px;
 }
 
+/* A value present in this batch's clustering but no longer in the dimension's current
+   values list (e.g. left behind by a rename/delete made while viewing a different batch). */
+.bsv-value-label--stale {
+    font-style: italic;
+    color: #999;
+}
+
 .bsv-value-actions {
     display: flex;
     align-items: center;

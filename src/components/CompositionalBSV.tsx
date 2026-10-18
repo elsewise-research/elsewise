@@ -3,6 +3,7 @@ import { Grid3x3, Workflow, Trash2, Eye, EyeOff } from "lucide-react";
 import { type Node, type NodeProps } from "@xyflow/react";
 import { Trajectory } from "@/models/Trajectory";
 import { ValueClustering, TrajectoryMoment, DIMENSION_VALUE_SEPARATOR } from "@/models/ValueClustering";
+import { orderByDimensionValues } from "@/utils/dimension";
 
 import "./styles/canvas.css"
 
@@ -87,15 +88,8 @@ export default function CompositionalBSV({data}: NodeProps<CompositionalBSV>) {
             momentsByCell.set(`${rowValue}::${columnValue}`, moments);
         }
 
-        // Order rows/columns by their dimension's own values list (so reordering values there
-        // reorders the matrix too), appending anything present in the data but missing from
-        // that list (e.g. stale clustering data) at the end rather than silently dropping it.
-        const orderRowsOrColumns = (present: Set<string>, orderedValues: string[]) => [
-            ...orderedValues.filter((value) => present.has(value)),
-            ...Array.from(present).filter((value) => !orderedValues.includes(value)),
-        ];
-        const rows = orderRowsOrColumns(presentRows, dimensionValuesList[0] ?? []);
-        const columns = orderRowsOrColumns(presentColumns, dimensionValuesList[1] ?? []);
+        const rows = orderByDimensionValues(presentRows, dimensionValuesList[0] ?? []);
+        const columns = orderByDimensionValues(presentColumns, dimensionValuesList[1] ?? []);
 
         return (
             <div className={`bsv-node${isDropTarget ? " bsv-node--drop-target" : ""}`}>

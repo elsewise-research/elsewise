@@ -28,6 +28,8 @@ import {
   deleteDimensionValue,
   addDimensionValue,
   moveDimensionValue,
+  sanitizeDimensionValue,
+  migrateStateNodePositions,
 } from "@/utils/dimension";
 import { ensureTrajectoryColors } from "@/utils/trajectory";
 import { callApi, getApi } from "@/app/apis/api";
@@ -76,25 +78,62 @@ function compositeDimensionIdsList(nodePosition: Record<string, { x: number; y: 
       .map((key) => key.split("|"));
 }
 
+// Sanitizes (see sanitizeDimensionValue) and dedupes a batch of values from a single source —
+// used wherever a dimension's initial values can come from free text: the user's own input,
+// or an LLM's (ExtractDimension/ExtractDimensionValues) response.
+function sanitizeDimensionValues(rawValues: string[]): string[] {
+    return Array.from(new Set(rawValues.map(sanitizeDimensionValue).filter(Boolean)));
+}
+
 // Rough footprint of a BSV node, used only to space freshly-placed nodes apart from each
 // other (see findFreePosition) — doesn't need to match the real rendered size exactly.
 const DEFAULT_NODE_WIDTH = 380;
 const DEFAULT_NODE_HEIGHT = 360;
 
-function overlapsExisting(candidate: { x: number; y: number }, taken: { x: number; y: number }[]): boolean {
-    return taken.some(
-      (t) => Math.abs(candidate.x - t.x) < DEFAULT_NODE_WIDTH && Math.abs(candidate.y - t.y) < DEFAULT_NODE_HEIGHT,
-    );
+// A spatial hash of positions, bucketed by node footprint, so an overlap check only has to
+// scan the (up to 9) neighboring buckets instead of every position ever placed — O(local
+// density) instead of O(n) per check, which matters since findFreePosition below calls this
+// up to ~1680 times (20 rings) for every newly-added node.
+function createPositionIndex(initial: { x: number; y: number }[]) {
+    const buckets = new Map<string, { x: number; y: number }[]>();
+    const bucketKeyOf = (x: number, y: number) => `${Math.floor(x / DEFAULT_NODE_WIDTH)},${Math.floor(y / DEFAULT_NODE_HEIGHT)}`;
+
+    const add = (position: { x: number; y: number }) => {
+        const key = bucketKeyOf(position.x, position.y);
+        const bucket = buckets.get(key);
+        if (bucket) bucket.push(position);
+        else buckets.set(key, [position]);
+    };
+    initial.forEach(add);
+
+    const overlaps = (candidate: { x: number; y: number }): boolean => {
+        const bx = Math.floor(candidate.x / DEFAULT_NODE_WIDTH);
+        const by = Math.floor(candidate.y / DEFAULT_NODE_HEIGHT);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const neighbors = buckets.get(`${bx + dx},${by + dy}`);
+            if (neighbors?.some((t) => Math.abs(candidate.x - t.x) < DEFAULT_NODE_WIDTH && Math.abs(candidate.y - t.y) < DEFAULT_NODE_HEIGHT)) {
+              return true;
+            }
+          }
+        }
+        return false;
+    };
+
+    return { add, overlaps };
 }
 
-// Spiral/ring search outward from `center` for the nearest point that doesn't overlap any
-// position in `taken`, so newly-added nodes land near the viewport center instead of off
+// Spiral/ring search outward from `center` for the nearest point that doesn't overlap
+// anything in `positions`, so newly-added nodes land near the viewport center instead of off
 // in a fixed grid, while still spreading apart from each other and from existing nodes.
-function findFreePosition(center: { x: number; y: number }, taken: { x: number; y: number }[]): { x: number; y: number } {
+function findFreePosition(
+    center: { x: number; y: number },
+    positions: ReturnType<typeof createPositionIndex>,
+): { x: number; y: number } {
     const RING_STEP = 60;
     const MAX_RINGS = 20;
 
-    if (!overlapsExisting(center, taken)) return center;
+    if (!positions.overlaps(center)) return center;
 
     for (let ring = 1; ring <= MAX_RINGS; ring++) {
       const pointsOnRing = 8 * ring;
@@ -104,9 +143,13 @@ function findFreePosition(center: { x: number; y: number }, taken: { x: number; 
           x: center.x + Math.cos(angle) * ring * RING_STEP,
           y: center.y + Math.sin(angle) * ring * RING_STEP,
         };
-        if (!overlapsExisting(candidate, taken)) return candidate;
+        if (!positions.overlaps(candidate)) return candidate;
       }
     }
+
+    // Extremely dense layout (20 rings' worth of candidates all taken) — fall back to
+    // stacking on the center rather than searching forever, but at least say so.
+    console.warn("findFreePosition: exhausted search radius; placing a new node on top of an existing one");
     return center;
 }
 
@@ -143,9 +186,16 @@ async function clusterDimensionValues(
 
 function Editor() {
     const { id } = useParams<{ id: string }>();
-    const [workspace, setWorkspace] = useState<Workspace | null>(null);
+    const [workspace, setWorkspaceRaw] = useState<Workspace | null>(null);
     const [batches, setBatches] = useState<Batch[]>([]);
     const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+    // Defaults to the most recent batch whenever selectedBatchId hasn't been explicitly set
+    // (or no longer refers to a batch that exists), without needing an effect to echo it into
+    // state.
+    const effectiveSelectedBatchId =
+      selectedBatchId && batches.some((batch) => batch.id === selectedBatchId)
+        ? selectedBatchId
+        : batches[batches.length - 1]?.id ?? null;
     const [batchData, setBatchData] = useState<BatchData | null>(null);
     const [pendingBatchIds, setPendingBatchIds] = useState<string[]>([]);
     const [clusteringBatchId, setClusteringBatchId] = useState<string | null>(null);
@@ -173,6 +223,24 @@ function Editor() {
 
     const batchesRef = useRef<Batch[]>([]);
     useEffect(() => { batchesRef.current = batches; }, [batches]);
+
+    // Mirrors `workspace` for synchronous reads in applyDimensionUpdate/applyDimensionValueEdit
+    // below — a plain `workspace` closure read can be one edit behind if two edits fire in the
+    // same tick (e.g. a rename committed via both Enter and the input's blur). Kept in sync by
+    // every `setWorkspace` call below (via the wrapper right after this), not just by the
+    // effect, which only catches up after the next commit — so it can't go stale just because
+    // some other handler (e.g. a drag-end) updated workspace in between via a raw functional
+    // updater this ref wrapper didn't see "live".
+    const workspaceRef = useRef<Workspace | null>(null);
+    useEffect(() => { workspaceRef.current = workspace; }, [workspace]);
+
+    const setWorkspace = (next: Workspace | null | ((prev: Workspace | null) => Workspace | null)) => {
+      setWorkspaceRaw((prev) => {
+        const resolved = typeof next === "function" ? (next as (prev: Workspace | null) => Workspace | null)(prev) : next;
+        workspaceRef.current = resolved;
+        return resolved;
+      });
+    };
 
     // Fire-and-forget persistence of workspace metadata (title, dimensions, settings).
     // Trajectories and value clusterings live in their own per-batch rows now, so there's
@@ -222,18 +290,18 @@ function Editor() {
       const dimensionId = crypto.randomUUID();
       // input.values are user-entered; pass them through as each dimension's existing
       // "values" so the LLM extracts additional ones instead of regenerating these.
-      let values = input.values;
+      let values = sanitizeDimensionValues(input.values);
 
       if (batchData?.trajectories.length) {
         const result = await callApi<ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType>(
           "/apis/ExtractDimensionValues",
           {
             trajectories: batchData.trajectories,
-            dimensions: [{ id: dimensionId, name: input.name, description: input.description, values: input.values }],
+            dimensions: [{ id: dimensionId, name: input.name, description: input.description, values }],
             domainDescription: workspace.domainDescription,
           },
         );
-        values = result.dimensions[0]?.values ?? input.values;
+        values = sanitizeDimensionValues(result.dimensions[0]?.values ?? values);
       }
 
       const dimension: Dimension = {
@@ -249,7 +317,7 @@ function Editor() {
     };
 
     const handleExtractDimension = async () => {
-      if (!workspace || !batchData?.trajectories.length || !selectedBatchId) return;
+      if (!workspace || !batchData?.trajectories.length || !effectiveSelectedBatchId) return;
 
       const result = await callApi<ExtractDimensionInputType, ExtractDimensionOutputType>(
         "/apis/ExtractDimension",
@@ -261,7 +329,7 @@ function Editor() {
       );
 
       const appendedWorkspace = result.dimensions.reduce(
-        (ws, dimension) => appendDimension(ws, dimension),
+        (ws, dimension) => appendDimension(ws, { ...dimension, values: sanitizeDimensionValues(dimension.values) }),
         workspace,
       );
       setWorkspace(appendedWorkspace);
@@ -278,7 +346,7 @@ function Editor() {
       setBatchData((prev) => {
         if (!prev) return prev;
         const valueClusterings = mergeValueClusterings(prev.valueClusterings, fresh);
-        persistBatchValueClusterings(selectedBatchId, valueClusterings);
+        persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
         return { ...prev, valueClusterings };
       });
     };
@@ -287,7 +355,7 @@ function Editor() {
     // like when clustering started) so clustering two different dimensions back to back can't
     // have one's result clobber the other's.
     const handleDimensionValueCluster = async (dimensionIds?: string[]) => {
-      if (!workspace || !batchData || !selectedBatchId) return;
+      if (!workspace || !batchData || !effectiveSelectedBatchId) return;
 
       const targetIds = dimensionIds ?? (workspace.dimensions ?? []).map((dimension) => dimension.id);
       const fresh = await withClusteringIndicator(targetIds, () => clusterDimensionValues(
@@ -299,7 +367,7 @@ function Editor() {
       setBatchData((prev) => {
         if (!prev) return prev;
         const valueClusterings = mergeValueClusterings(prev.valueClusterings, fresh);
-        persistBatchValueClusterings(selectedBatchId, valueClusterings);
+        persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
         return { ...prev, valueClusterings };
       });
     };
@@ -408,25 +476,45 @@ function Editor() {
       });
     };
 
+    // Drops any settings-map entry that is either an exact match for `dimensionId` (the
+    // simple-BSV form of that setting, e.g. compactView/showArrows) or a composite key
+    // ("id1|id2", e.g. nodePosition/matrixView/showArrows/stateNodePosition) that includes it
+    // (the combined-BSV form) — so a deleted dimension's per-node settings don't linger
+    // forever, and don't silently resurface if the same dimension pair is recreated later.
+    const pruneSettingsEntriesForDimension = <T,>(
+      record: Record<string, T> | undefined,
+      dimensionId: string,
+    ): Record<string, T> | undefined => {
+      if (!record) return record;
+      const entries = Object.entries(record).filter(
+        ([key]) => key !== dimensionId && !(key.includes("|") && key.split("|").includes(dimensionId)),
+      );
+      return entries.length === Object.keys(record).length ? record : Object.fromEntries(entries);
+    };
+
     // Deleting a dimension also prunes any composite nodePosition entry that referenced
     // it — otherwise that composite's node would keep appearing (with a broken label, since
     // the dimension is gone) and keep getting recomputed with stale data on every future
-    // "new batch" auto-recluster, since node existence is derived purely from nodePosition.
+    // "new batch" auto-recluster, since node existence is derived purely from nodePosition —
+    // and prunes the dimension's own (and any composite's) matrixView/showArrows/compactView/
+    // stateNodePosition entries the same way, so they don't leak indefinitely either.
     const handleDeleteDimension = (dimensionId: string) => {
       setWorkspace((prev) => {
         if (!prev) return prev;
 
         const withoutDimension = deleteDimension(prev, dimensionId);
-        const nodePosition = { ...withoutDimension.settings?.nodePosition };
-        for (const key of Object.keys(nodePosition)) {
-          if (key.includes("|") && key.split("|").includes(dimensionId)) {
-            delete nodePosition[key];
-          }
-        }
+        const settings = withoutDimension.settings ?? {};
 
         const updatedWorkspace: Workspace = {
           ...withoutDimension,
-          settings: { ...withoutDimension.settings, nodePosition },
+          settings: {
+            ...settings,
+            nodePosition: pruneSettingsEntriesForDimension(settings.nodePosition, dimensionId) ?? {},
+            matrixView: pruneSettingsEntriesForDimension(settings.matrixView, dimensionId),
+            showArrows: pruneSettingsEntriesForDimension(settings.showArrows, dimensionId),
+            compactView: pruneSettingsEntriesForDimension(settings.compactView, dimensionId),
+            stateNodePosition: pruneSettingsEntriesForDimension(settings.stateNodePosition, dimensionId),
+          },
         };
         persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
@@ -438,86 +526,114 @@ function Editor() {
       dimensions: (prevWorkspace.dimensions ?? []).map((d) => (d.id === dimensionId ? updatedDimension : d)),
     });
 
-    const handleRenameDimensionValue = (dimensionId: string, oldValue: string, newValue: string) => {
-      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
-      if (!workspace || !dimension) return;
+    // Applies `transformDimension` to one dimension and, optionally, `transformSettings` to
+    // workspace.settings in the same update (e.g. migrating stateNodePosition to follow a
+    // rename). Uses workspaceRef — not the `workspace` closure, and not a functional
+    // setWorkspace updater (whose result can't be read back out in time for callers that also
+    // need to sync batchData off the same resolved Dimension) — so two edits fired in the same
+    // tick (e.g. SimpleBSV's Enter-then-blur double-commit) see each other's result instead of
+    // both computing from the same pre-edit dimension. Returns the updated Dimension (or null
+    // if nothing changed or the dimension is unknown).
+    const applyDimensionUpdate = (
+      dimensionId: string,
+      transformDimension: (dimension: Dimension) => Dimension,
+      transformSettings?: (settings: Workspace["settings"]) => Workspace["settings"],
+    ): Dimension | null => {
+      const currentWorkspace = workspaceRef.current;
+      const dimension = currentWorkspace?.dimensions?.find((d) => d.id === dimensionId);
+      if (!currentWorkspace || !dimension) return null;
 
-      const { dimension: updatedDimension, valueClusterings } = renameDimensionValue(
-        dimension,
-        batchData?.valueClusterings ?? [],
-        oldValue,
-        newValue,
-      );
-      if (updatedDimension === dimension) return;
+      const updatedDimension = transformDimension(dimension);
+      if (updatedDimension === dimension) return null;
 
-      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
+      const updatedWorkspace: Workspace = {
+        ...withDimensionUpdated(currentWorkspace, dimensionId, updatedDimension),
+        settings: transformSettings ? transformSettings(currentWorkspace.settings) : currentWorkspace.settings,
+      };
       setWorkspace(updatedWorkspace);
       persistWorkspace(updatedWorkspace);
+      return updatedDimension;
+    };
 
-      setBatchData((prev) => (prev ? { ...prev, valueClusterings } : prev));
-      if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
+    // Applies a rename/delete/add-style edit to one dimension's values and the matching
+    // valueClustering entries, via applyDimensionUpdate above for the workspace/dimension
+    // side. Both the workspace-side and batchData-side `editFn` calls below are given the SAME
+    // pre-edit `dimension` — editFn's guards (e.g. renameDimensionValue/deleteDimensionValue
+    // checking `dimension.values.includes(oldValue)`) only hold against the dimension as it
+    // was *before* this edit, so passing the already-updated dimension into the second call
+    // would make that guard always fail and silently no-op the valueClustering update. The
+    // setBatchData call still reads `prevBatchData` functionally, since that side's real race
+    // is against something slower and async (e.g. a "cluster this dimension" call resolving in
+    // between), which workspaceRef can't help with.
+    const applyDimensionValueEdit = (
+      dimensionId: string,
+      editFn: (dimension: Dimension, valueClusterings: ValueClustering[]) => { dimension: Dimension; valueClusterings: ValueClustering[] },
+      transformSettings?: (settings: Workspace["settings"]) => Workspace["settings"],
+    ) => {
+      const dimension = workspaceRef.current?.dimensions?.find((d) => d.id === dimensionId);
+      if (!dimension) return;
+
+      const updatedDimension = applyDimensionUpdate(dimensionId, () => editFn(dimension, []).dimension, transformSettings);
+      if (!updatedDimension) return;
+
+      setBatchData((prevBatchData) => {
+        if (!prevBatchData) return prevBatchData;
+
+        const { valueClusterings } = editFn(dimension, prevBatchData.valueClusterings);
+        if (valueClusterings === prevBatchData.valueClusterings) return prevBatchData;
+
+        if (effectiveSelectedBatchId) persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
+        return { ...prevBatchData, valueClusterings };
+      });
+    };
+
+    const handleRenameDimensionValue = (dimensionId: string, oldValue: string, newValue: string) => {
+      const resolvedValue = sanitizeDimensionValue(newValue);
+      applyDimensionValueEdit(
+        dimensionId,
+        (dimension, valueClusterings) => renameDimensionValue(dimension, valueClusterings, oldValue, newValue),
+        (settings) => ({
+          ...settings,
+          stateNodePosition: migrateStateNodePositions(settings?.stateNodePosition, dimensionId, oldValue, resolvedValue),
+        }),
+      );
     };
 
     const handleDeleteDimensionValue = (dimensionId: string, value: string) => {
-      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
-      if (!workspace || !dimension) return;
+      if (!workspaceRef.current?.dimensions?.some((d) => d.id === dimensionId)) return;
 
       const confirmed = window.confirm(
         `Delete value "${value}"? Any trajectory moments assigned to it — in this dimension and any combined view built from it — will become unassigned until re-clustered. This cannot be undone.`
       );
       if (!confirmed) return;
 
-      const { dimension: updatedDimension, valueClusterings } = deleteDimensionValue(
-        dimension,
-        batchData?.valueClusterings ?? [],
-        value,
+      applyDimensionValueEdit(
+        dimensionId,
+        (dimension, valueClusterings) => deleteDimensionValue(dimension, valueClusterings, value),
+        (settings) => ({
+          ...settings,
+          stateNodePosition: migrateStateNodePositions(settings?.stateNodePosition, dimensionId, value, null),
+        }),
       );
-      if (updatedDimension === dimension) return;
-
-      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
-      setWorkspace(updatedWorkspace);
-      persistWorkspace(updatedWorkspace);
-
-      setBatchData((prev) => (prev ? { ...prev, valueClusterings } : prev));
-      if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
     };
 
     const handleAddDimensionValue = (dimensionId: string, value: string) => {
-      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
-      if (!workspace || !dimension) return;
-
-      const { dimension: updatedDimension, valueClusterings } = addDimensionValue(
-        dimension,
-        batchData?.valueClusterings ?? [],
-        value,
+      applyDimensionValueEdit(dimensionId, (dimension, valueClusterings) =>
+        addDimensionValue(dimension, valueClusterings, value),
       );
-      if (updatedDimension === dimension) return;
-
-      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
-      setWorkspace(updatedWorkspace);
-      persistWorkspace(updatedWorkspace);
-
-      setBatchData((prev) => (prev ? { ...prev, valueClusterings } : prev));
-      if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
     };
 
     const handleMoveDimensionValue = (dimensionId: string, value: string, direction: "up" | "down") => {
-      const dimension = workspace?.dimensions?.find((d) => d.id === dimensionId);
-      if (!workspace || !dimension) return;
-
-      const updatedDimension = moveDimensionValue(dimension, value, direction);
-      if (updatedDimension === dimension) return;
-
-      const updatedWorkspace = withDimensionUpdated(workspace, dimensionId, updatedDimension);
-      setWorkspace(updatedWorkspace);
-      persistWorkspace(updatedWorkspace);
+      applyDimensionUpdate(dimensionId, (dimension) => moveDimensionValue(dimension, value, direction));
     };
 
     // Deleting a composite node removes its nodePosition entry (the only workspace-level
-    // record of its existence, see compositeDimensionIdsList) and strips it from the
-    // currently-loaded batch's value clusterings. Other, unvisited batches may still have a
-    // stale entry for it — harmless, since nothing renders a composite that isn't also
-    // registered in nodePosition.
+    // record of its existence, see compositeDimensionIdsList), its matrixView/showArrows/
+    // stateNodePosition entries (so a future composite reusing the same key — e.g. re-crossing
+    // the same two dimensions — doesn't silently inherit stale view toggles or drag positions),
+    // and strips it from the currently-loaded batch's value clusterings. Other, unvisited
+    // batches may still have a stale valueClustering entry for it — harmless, since nothing
+    // renders a composite that isn't also registered in nodePosition.
     const handleDeleteValueClustering = (dimensionIds: string[]) => {
       const key = dimensionIds.join("|");
 
@@ -526,8 +642,17 @@ function Editor() {
 
         const nodePosition = { ...prev.settings?.nodePosition };
         delete nodePosition[key];
+        const matrixView = { ...prev.settings?.matrixView };
+        delete matrixView[key];
+        const showArrows = { ...prev.settings?.showArrows };
+        delete showArrows[key];
+        const stateNodePosition = { ...prev.settings?.stateNodePosition };
+        delete stateNodePosition[key];
 
-        const updatedWorkspace: Workspace = { ...prev, settings: { ...prev.settings, nodePosition } };
+        const updatedWorkspace: Workspace = {
+          ...prev,
+          settings: { ...prev.settings, nodePosition, matrixView, showArrows, stateNodePosition },
+        };
         persistWorkspace(updatedWorkspace);
         return updatedWorkspace;
       });
@@ -536,7 +661,7 @@ function Editor() {
         if (!prev) return prev;
 
         const valueClusterings = deleteValueClustering(prev.valueClusterings, dimensionIds);
-        if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
+        if (effectiveSelectedBatchId) persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
         return { ...prev, valueClusterings };
       });
     };
@@ -618,7 +743,7 @@ function Editor() {
         if (!prev) return prev;
 
         const valueClusterings = crossDimensions(prev.valueClusterings, vcA, vcB);
-        if (selectedBatchId) persistBatchValueClusterings(selectedBatchId, valueClusterings);
+        if (effectiveSelectedBatchId) persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
         return { ...prev, valueClusterings };
       });
 
@@ -720,17 +845,9 @@ function Editor() {
       });
     }, [id]);
 
-    // Defaults to the most recent batch the first time batches become available, without
-    // overriding a selection the user already made.
     useEffect(() => {
-      if (batches.length === 0) return;
-      if (selectedBatchId && batches.some((batch) => batch.id === selectedBatchId)) return;
-      setSelectedBatchId(batches[batches.length - 1].id);
-    }, [batches, selectedBatchId]);
-
-    useEffect(() => {
-      if (!id || !selectedBatchId) return;
-      getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${selectedBatchId}`).then((result) => {
+      if (!id || !effectiveSelectedBatchId) return;
+      getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${effectiveSelectedBatchId}`).then((result) => {
         setBatchData(result.data);
         setWorkspace((prev) => {
           if (!prev) return prev;
@@ -740,7 +857,7 @@ function Editor() {
           return updatedWorkspace;
         });
       });
-    }, [id, selectedBatchId]);
+    }, [id, effectiveSelectedBatchId]);
 
     // Polls a cheap metadata-and-batch-list endpoint (never full trajectory data) for
     // batches pushed while this tab is open. Depends only on `id` — never on `workspace`/
@@ -788,13 +905,18 @@ function Editor() {
       const viewportCenter = wrapperRect
         ? screenToFlowPosition({ x: wrapperRect.left + wrapperRect.width / 2, y: wrapperRect.top + wrapperRect.height / 2 })
         : { x: 0, y: 0 };
-      const takenPositions = Object.values(nodePosition);
+      const takenPositions = createPositionIndex(Object.values(nodePosition));
+      // Positions assigned below for nodes that don't have a saved one yet — persisted once,
+      // right after this render, so they stick instead of being recomputed (and jumping to a
+      // new spot) every time this effect reruns for an unrelated reason.
+      const newlyPositioned: Record<string, { x: number; y: number }> = {};
 
       const nextPositionFor = (key: string) => {
         const saved = nodePosition[key];
         if (saved) return saved;
         const position = findFreePosition(viewportCenter, takenPositions);
-        takenPositions.push(position);
+        takenPositions.add(position);
+        newlyPositioned[key] = position;
         return position;
       };
 
@@ -827,7 +949,6 @@ function Editor() {
             isClustering: clusteringDimensionIds.includes(dimension.id),
             onMomentClick: handleMomentClick,
             onCellClick: handleCellClick,
-            highlightedTrajectoryMoments,
           },
         };
       });
@@ -858,7 +979,6 @@ function Editor() {
             onDelete: () => handleDeleteValueClustering(dimensionIds),
             onMomentClick: handleMomentClick,
             onCellClick: handleCellClick,
-            highlightedTrajectoryMoments,
             stateNodePositions: workspace?.settings?.stateNodePosition?.[dimensionIdsKey],
             onStateNodePositionChange: (nodeId: string, position: { x: number; y: number }) =>
               handleStateNodePositionChange(dimensionIdsKey, nodeId, position),
@@ -867,29 +987,35 @@ function Editor() {
       });
 
       setNodes([...simpleNodes, ...compositionalNodes]);
+
+      if (Object.keys(newlyPositioned).length > 0) {
+        setWorkspace((prev) => {
+          if (!prev) return prev;
+          const updatedWorkspace: Workspace = {
+            ...prev,
+            settings: { ...prev.settings, nodePosition: { ...prev.settings?.nodePosition, ...newlyPositioned } },
+          };
+          persistWorkspace(updatedWorkspace);
+          return updatedWorkspace;
+        });
+      }
     }, [workspace, batchData, trajectoryColorSetting, clusteringDimensionIds, screenToFlowPosition]);
 
-    useEffect(() => {
-      setNodes((current) =>
-        current.map((n) =>
-          Boolean(n.data.isDropTarget) === (n.id === dropTargetId)
-            ? n
-            : { ...n, data: { ...n.data, isDropTarget: n.id === dropTargetId } },
-        ),
-      );
-    }, [dropTargetId]);
-
-    useEffect(() => {
-      setNodes((current) =>
-        current.map((n) => ({ ...n, data: { ...n.data, currTrajectoryMoment } })),
-      );
-    }, [currTrajectoryMoment]);
-
-    useEffect(() => {
-      setNodes((current) =>
-        current.map((n) => ({ ...n, data: { ...n.data, highlightedTrajectoryMoments } })),
-      );
-    }, [highlightedTrajectoryMoments]);
+    // UI-only fields that change far more often than the node data built above; overlaid at
+    // render time instead of being patched back into `nodes` state via their own effects.
+    const displayNodes = useMemo(
+      () =>
+        nodes.map((n) => ({
+          ...n,
+          data: {
+            ...n.data,
+            isDropTarget: n.id === dropTargetId,
+            currTrajectoryMoment,
+            highlightedTrajectoryMoments,
+          },
+        })),
+      [nodes, dropTargetId, currTrajectoryMoment, highlightedTrajectoryMoments],
+    );
 
     return (
       <>
@@ -928,7 +1054,7 @@ function Editor() {
                 <div className={styles["turn-order-slider"]} title="select which batch of trajectories to show">
                   <span>
                     {(() => {
-                      const idx = batches.findIndex((batch) => batch.id === selectedBatchId);
+                      const idx = batches.findIndex((batch) => batch.id === effectiveSelectedBatchId);
                       return idx < 0 ? "" : `Batch ${idx + 1} · ${new Date(batches[idx].createdAt).toLocaleString()}`;
                     })()}
                   </span>
@@ -937,7 +1063,7 @@ function Editor() {
                     min={0}
                     max={batches.length - 1}
                     step={1}
-                    value={Math.max(0, batches.findIndex((batch) => batch.id === selectedBatchId))}
+                    value={Math.max(0, batches.findIndex((batch) => batch.id === effectiveSelectedBatchId))}
                     onChange={(e) => handleBatchChange(batches[Number(e.target.value)].id)}
                   />
                 </div>
@@ -980,9 +1106,9 @@ function Editor() {
             </div>
           </div>
           <div className={styles.canvas}>
-            <ReactFlow nodes={nodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} />
+            <ReactFlow nodes={displayNodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} />
           </div>
-          <pre>{JSON.stringify({ workspace, batches, selectedBatchId, batchData }, null, 2)}</pre>
+          <pre>{JSON.stringify({ workspace, batches, selectedBatchId: effectiveSelectedBatchId, batchData }, null, 2)}</pre>
         </div>
         {isAddDimensionOpen && (
           <AddDimensionDialog
