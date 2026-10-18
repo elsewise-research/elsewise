@@ -162,21 +162,35 @@ export function renameDimensionValue(
             : dimension.values.map((value) => (value === oldValue ? trimmed : value)),
     };
 
+    // `.map()` always allocates a new array, so track whether anything actually changed and
+    // fall back to the original `valueClusterings` reference if not — otherwise a rename that
+    // doesn't apply to any clustering in this batch (e.g. a brand-new dimension) would still
+    // look like a change to callers comparing by reference (see applyDimensionValueEdit).
+    let anyChanged = false;
     const updatedValueClusterings = valueClusterings.map((vc) => {
         const dimIndex = vc.dimensionIds.indexOf(dimension.id);
         if (dimIndex === -1) return vc;
 
+        let vcChanged = false;
         const valueMapping: Record<string, TrajectoryMoment[]> = {};
         for (const [key, moments] of Object.entries(vc.valueMapping)) {
             const parts = key.split(DIMENSION_VALUE_SEPARATOR);
-            if (parts[dimIndex] === oldValue) parts[dimIndex] = trimmed;
+            if (parts[dimIndex] === oldValue) {
+                parts[dimIndex] = trimmed;
+                vcChanged = true;
+            }
             const newKey = parts.join(DIMENSION_VALUE_SEPARATOR);
             valueMapping[newKey] = [...(valueMapping[newKey] ?? []), ...moments];
         }
+        if (!vcChanged) return vc;
+        anyChanged = true;
         return { ...vc, valueMapping };
     });
 
-    return { dimension: updatedDimension, valueClusterings: updatedValueClusterings };
+    return {
+        dimension: updatedDimension,
+        valueClusterings: anyChanged ? updatedValueClusterings : valueClusterings,
+    };
 }
 
 // Deletes a value from a dimension: removes it from the values list, and drops any
@@ -197,19 +211,31 @@ export function deleteDimensionValue(
         values: dimension.values.filter((v) => v !== value),
     };
 
+    // See renameDimensionValue for why `anyChanged` is tracked instead of relying on `.map()`'s
+    // own (always-new) array reference.
+    let anyChanged = false;
     const updatedValueClusterings = valueClusterings.map((vc) => {
         const dimIndex = vc.dimensionIds.indexOf(dimension.id);
         if (dimIndex === -1) return vc;
 
+        let vcChanged = false;
         const valueMapping: Record<string, TrajectoryMoment[]> = {};
         for (const [key, moments] of Object.entries(vc.valueMapping)) {
-            if (key.split(DIMENSION_VALUE_SEPARATOR)[dimIndex] === value) continue;
+            if (key.split(DIMENSION_VALUE_SEPARATOR)[dimIndex] === value) {
+                vcChanged = true;
+                continue;
+            }
             valueMapping[key] = moments;
         }
+        if (!vcChanged) return vc;
+        anyChanged = true;
         return { ...vc, valueMapping };
     });
 
-    return { dimension: updatedDimension, valueClusterings: updatedValueClusterings };
+    return {
+        dimension: updatedDimension,
+        valueClusterings: anyChanged ? updatedValueClusterings : valueClusterings,
+    };
 }
 
 // Adds a new value to a dimension (a no-op, returning the same references, if it's blank or

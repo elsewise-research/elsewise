@@ -244,6 +244,7 @@ export default function SimpleBSV({data}: NodeProps<SimpleBSV>) {
                                                 autoFocus
                                                 value={editDraft}
                                                 onClick={(e) => e.stopPropagation()}
+                                                onDoubleClick={(e) => e.stopPropagation()}
                                                 onChange={(e) => setEditDraft(e.target.value)}
                                                 onBlur={() => commitEdit(value)}
                                                 onKeyDown={(e) => {

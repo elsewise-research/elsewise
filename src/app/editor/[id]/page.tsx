@@ -85,6 +85,31 @@ function sanitizeDimensionValues(rawValues: string[]): string[] {
     return Array.from(new Set(rawValues.map(sanitizeDimensionValue).filter(Boolean)));
 }
 
+// Recomputes every composite built (at least in part) from `affectedDimensionIds`'s own
+// simple ValueClustering(s) and splices the result into `valueClusterings` — used both when a
+// brand-new batch is first clustered (every composite needs computing; pass no
+// `affectedDimensionIds`) and when an existing batch re-clusters a subset of its dimensions
+// (only composites referencing one of them need refreshing, since re-clustering a simple
+// ValueClustering otherwise leaves any composite built from it frozen — see
+// mergeValueClusterings).
+function recomputeAffectedComposites(
+    valueClusterings: ValueClustering[],
+    nodePosition: Record<string, { x: number; y: number }> | undefined,
+    affectedDimensionIds?: string[],
+): ValueClustering[] {
+    let result = valueClusterings;
+    for (const compositeIds of compositeDimensionIdsList(nodePosition)) {
+        if (affectedDimensionIds && affectedDimensionIds.every((id) => !compositeIds.includes(id))) continue;
+
+        const recomputed = recomputeComposite(result, compositeIds);
+        if (!recomputed) continue;
+
+        const key = dimensionIdsKeyOf(compositeIds);
+        result = [...result.filter((vc) => dimensionIdsKeyOf(vc.dimensionIds) !== key), recomputed];
+    }
+    return result;
+}
+
 // Rough footprint of a BSV node, used only to space freshly-placed nodes apart from each
 // other (see findFreePosition) — doesn't need to match the real rendered size exactly.
 const DEFAULT_NODE_WIDTH = 380;
@@ -226,13 +251,13 @@ function Editor() {
 
     // Mirrors `workspace` for synchronous reads in applyDimensionUpdate/applyDimensionValueEdit
     // below — a plain `workspace` closure read can be one edit behind if two edits fire in the
-    // same tick (e.g. a rename committed via both Enter and the input's blur). Kept in sync by
-    // every `setWorkspace` call below (via the wrapper right after this), not just by the
-    // effect, which only catches up after the next commit — so it can't go stale just because
-    // some other handler (e.g. a drag-end) updated workspace in between via a raw functional
-    // updater this ref wrapper didn't see "live".
+    // same tick (e.g. a rename committed via both Enter and the input's blur). Kept in sync
+    // entirely by the `setWorkspace` wrapper right below (every write in this file goes
+    // through it — nothing calls `setWorkspaceRaw` directly), which writes the ref
+    // synchronously inside the same state update, not by a separate effect — an effect would
+    // only catch up after the next commit, which is exactly the one-tick staleness this ref
+    // exists to avoid.
     const workspaceRef = useRef<Workspace | null>(null);
-    useEffect(() => { workspaceRef.current = workspace; }, [workspace]);
 
     const setWorkspace = (next: Workspace | null | ((prev: Workspace | null) => Workspace | null)) => {
       setWorkspaceRaw((prev) => {
@@ -311,7 +336,9 @@ function Editor() {
         values,
       };
 
-      const updatedWorkspace = appendDimension(workspace, dimension);
+      // Reads workspaceRef, not the `workspace` closure captured before the awaits above
+      // (an LLM call can take several seconds), so a concurrent edit elsewhere isn't reverted.
+      const updatedWorkspace = appendDimension(workspaceRef.current ?? workspace, dimension);
       setWorkspace(updatedWorkspace);
       persistWorkspace(updatedWorkspace);
     };
@@ -328,9 +355,11 @@ function Editor() {
         },
       );
 
+      // Same reasoning as handleSubmitAddDimension: use workspaceRef, not the closure captured
+      // before the await above, as the base to append the extracted dimensions onto.
       const appendedWorkspace = result.dimensions.reduce(
         (ws, dimension) => appendDimension(ws, { ...dimension, values: sanitizeDimensionValues(dimension.values) }),
-        workspace,
+        workspaceRef.current ?? workspace,
       );
       setWorkspace(appendedWorkspace);
       persistWorkspace(appendedWorkspace);
@@ -366,7 +395,16 @@ function Editor() {
       ));
       setBatchData((prev) => {
         if (!prev) return prev;
-        const valueClusterings = mergeValueClusterings(prev.valueClusterings, fresh);
+        const merged = mergeValueClusterings(prev.valueClusterings, fresh);
+
+        // mergeValueClusterings only replaces the simple clustering(s) just recomputed above —
+        // any composite built from one of them is otherwise left stale (frozen at whatever it
+        // was when it was first crossed), so recompute every composite that includes one of
+        // the dimensions just clustered. Reads workspaceRef, not the `workspace` closure
+        // captured before the `await` above, so a composite created while clustering was in
+        // flight (e.g. the user drag-combined two dimensions while this was pending) is seen.
+        const valueClusterings = recomputeAffectedComposites(merged, workspaceRef.current?.settings?.nodePosition, targetIds);
+
         persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
         return { ...prev, valueClusterings };
       });
@@ -805,22 +843,16 @@ function Editor() {
       setClusteringBatchId(batchId);
       try {
         const batchResult = await getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${batchId}`);
-        let valueClusterings = await clusterDimensionValues(
+        // Reads workspaceRef, not the `workspace` closure captured before the await above (a
+        // real network round trip), so a dimension added/edited/deleted while this batch's
+        // data was loading is reflected in what gets clustered.
+        const currentWorkspace = workspaceRef.current ?? workspace;
+        const clustered = await clusterDimensionValues(
           batchResult.data,
-          workspace.dimensions ?? [],
-          workspace.domainDescription,
+          currentWorkspace.dimensions ?? [],
+          currentWorkspace.domainDescription,
         );
-
-        for (const dimensionIds of compositeDimensionIdsList(workspace.settings?.nodePosition)) {
-          const recomputed = recomputeComposite(valueClusterings, dimensionIds);
-          if (!recomputed) continue;
-
-          const key = dimensionIdsKeyOf(dimensionIds);
-          valueClusterings = [
-            ...valueClusterings.filter((vc) => dimensionIdsKeyOf(vc.dimensionIds) !== key),
-            recomputed,
-          ];
-        }
+        const valueClusterings = recomputeAffectedComposites(clustered, workspaceRef.current?.settings?.nodePosition);
 
         await callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
           `/apis/Workspace/${id}/Batches/${batchId}/ValueClusterings`,

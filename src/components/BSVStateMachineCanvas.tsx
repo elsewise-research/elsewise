@@ -41,7 +41,11 @@ export default function BSVStateMachineCanvas({
     // the computed layout. Local state so dragging stays smooth; the final position is handed
     // to onNodePositionChange on drag end so the parent can persist it.
     const [draggedPositions, setDraggedPositions] = useState<Record<string, { x: number; y: number }>>({});
-    const dragMovedRef = useRef(false);
+    // Which node (if any) just finished being dragged, so the spurious trailing dblclick/
+    // dbltap that follows a drag-release can be suppressed for THAT node only — keyed by node
+    // id (not a single shared flag) so dragging node A can't swallow a genuine, separate
+    // double-click on node B.
+    const dragMovedNodeIdRef = useRef<string | null>(null);
     const [minMoments, setMinMoments] = useState(1);
 
     // The highest moment count any single state has, regardless of the current filter —
@@ -242,9 +246,9 @@ export default function BSVStateMachineCanvas({
                             x={positionOf(node).x}
                             y={positionOf(node).y}
                             draggable
-                            onDragStart={() => { dragMovedRef.current = false; }}
+                            onDragStart={() => { dragMovedNodeIdRef.current = null; }}
                             onDragMove={(e) => {
-                                dragMovedRef.current = true;
+                                dragMovedNodeIdRef.current = node.id;
                                 setDraggedPositions((prev) => ({ ...prev, [node.id]: { x: e.target.x(), y: e.target.y() } }));
                             }}
                             onDragEnd={(e) => {
@@ -255,21 +259,23 @@ export default function BSVStateMachineCanvas({
                                 // such spurious event follows this drag, the flag must not stay stuck
                                 // true forever — that would silently swallow the next *real*
                                 // double-click on this node.
-                                setTimeout(() => { dragMovedRef.current = false; }, 0);
+                                setTimeout(() => {
+                                    if (dragMovedNodeIdRef.current === node.id) dragMovedNodeIdRef.current = null;
+                                }, 0);
                             }}
                             onDblClick={() => {
                                 // A drag that ends over the node would otherwise also fire a click;
                                 // consume the flag so only that one click is suppressed, not every
                                 // click from then on.
-                                if (dragMovedRef.current) {
-                                    dragMovedRef.current = false;
+                                if (dragMovedNodeIdRef.current === node.id) {
+                                    dragMovedNodeIdRef.current = null;
                                     return;
                                 }
                                 onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
                             }}
                             onDblTap={() => {
-                                if (dragMovedRef.current) {
-                                    dragMovedRef.current = false;
+                                if (dragMovedNodeIdRef.current === node.id) {
+                                    dragMovedNodeIdRef.current = null;
                                     return;
                                 }
                                 onCellClick?.(valueClustering.valueMapping[node.id] ?? []);
