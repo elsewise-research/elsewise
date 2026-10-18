@@ -410,6 +410,16 @@ function Editor() {
       });
     };
 
+    // "Cluster all" re-runs every dimension's clustering (overwriting any manual edits made
+    // to existing value assignments) in one go, so confirm first — unlike re-clustering a
+    // single dimension from its own BSV, which doesn't need one.
+    const handleClusterAllClick = () => {
+      const confirmed = window.confirm(
+        "Re-cluster every dimension in this batch? This recomputes trajectory moment assignments for all dimensions and replaces the current ones. This cannot be undone."
+      );
+      if (confirmed) handleDimensionValueCluster();
+    };
+
     const handleDownloadWorkspace = async () => {
       if (!workspace || !id) return;
 
@@ -1109,7 +1119,7 @@ function Editor() {
               )}
               <button onClick={() => {handleAddDimension()}} title="add new dimension"><Plus size={16} /></button>
               <button onClick={() => {handleExtractDimension()}}title="exract dimensions from trajectories"><Sparkles size={16} /></button>
-              <button onClick={() => {handleDimensionValueCluster()}} title="re-cluster all trajectory moments in this batch across all dimensions" aria-label="re-cluster all trajectory moments in this batch across all dimensions"><Group size={16} /></button>
+              <button onClick={handleClusterAllClick} title="re-cluster all trajectory moments in this batch across all dimensions" aria-label="re-cluster all trajectory moments in this batch across all dimensions"><Group size={16} /></button>
               <button onClick={() => {handleClearHighlightedTrajectoryMoment()}} title="clear highlighted trajectory moments" aria-label="clear highlighted trajectory moments">
                 <FilterX size={16} />
               </button>

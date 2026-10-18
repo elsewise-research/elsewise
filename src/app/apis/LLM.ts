@@ -11,6 +11,10 @@ export type ApiLine = {
         data: string;
       };
       metadata?: Record<string, object>;
+      // Marks this block (and everything before it) as cacheable by Anthropic's prompt
+      // caching — a later request sharing the same prefix bytes gets a fast, cheap cache hit
+      // instead of full reprocessing. Passed straight through to the API body below.
+      cache_control?: { type: 'ephemeral' };
     }>;
   };
 
