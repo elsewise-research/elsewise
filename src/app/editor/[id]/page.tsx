@@ -847,7 +847,13 @@ function Editor() {
 
     useEffect(() => {
       if (!id || !effectiveSelectedBatchId) return;
+      // Guards against rapid batch switching (e.g. dragging the slider) resolving out of
+      // order: React runs this cleanup for the PREVIOUS effect instance before the new one
+      // fires whenever effectiveSelectedBatchId changes, so an in-flight fetch for a batch
+      // that's no longer selected gets its result ignored instead of overwriting the newer one.
+      let cancelled = false;
       getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${effectiveSelectedBatchId}`).then((result) => {
+        if (cancelled) return;
         setBatchData(result.data);
         setWorkspace((prev) => {
           if (!prev) return prev;
@@ -857,6 +863,7 @@ function Editor() {
           return updatedWorkspace;
         });
       });
+      return () => { cancelled = true; };
     }, [id, effectiveSelectedBatchId]);
 
     // Polls a cheap metadata-and-batch-list endpoint (never full trajectory data) for
