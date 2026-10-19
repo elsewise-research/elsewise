@@ -179,34 +179,36 @@ function findFreePosition(
 }
 
 // Clusters trajectory moments in `batchData` into each dimension's values (scoped to
-// dimensionIds if given, otherwise every dimension). Returns only the freshly computed
-// entries — NOT merged with batchData.valueClusterings — so callers can merge them in via
-// a functional state update against whatever the latest state is by the time this resolves,
-// rather than against a `batchData` snapshot that may be stale by then (e.g. if the user
-// triggered clustering for two different dimensions back to back).
+// dimensionIds if given, otherwise every dimension), one dimension per API call so each
+// result can be handed to `onDimensionClustered` — and so the caller can update the UI — as
+// soon as THAT dimension is done, rather than waiting for every dimension to finish. The
+// first dimension runs alone to prime the server's prompt cache (shared trajectory context
+// across dimensions); the rest run in parallel against the now-cached prefix once it lands.
 async function clusterDimensionValues(
     batchData: BatchData,
     dimensions: Dimension[],
     domainDescription: string | undefined,
-    dimensionIds?: string[],
-): Promise<ValueClustering[]> {
-    if (!batchData.trajectories.length || !dimensions.length) return [];
+    dimensionIds: string[] | undefined,
+    onDimensionClustered: (valueClustering: ValueClustering) => void,
+): Promise<void> {
+    if (!batchData.trajectories.length || !dimensions.length) return;
 
     const dimensionsToCluster = dimensionIds
       ? dimensions.filter((dimension) => dimensionIds.includes(dimension.id))
       : dimensions;
-    if (dimensionsToCluster.length === 0) return [];
+    if (dimensionsToCluster.length === 0) return;
 
-    const result = await callApi<DimensionValueClusterInputType, DimensionValueClusterOutputType>(
-      "/apis/DimensionValueCluster",
-      {
-        trajectories: batchData.trajectories,
-        dimensions: dimensionsToCluster,
-        domainDescription,
-      },
-    );
+    const clusterOne = async (dimension: Dimension) => {
+        const result = await callApi<DimensionValueClusterInputType, DimensionValueClusterOutputType>(
+          "/apis/DimensionValueCluster",
+          { trajectories: batchData.trajectories, dimension, domainDescription },
+        );
+        onDimensionClustered(result.valueClustering);
+    };
 
-    return result.valueClusterings;
+    const [firstDimension, ...restDimensions] = dimensionsToCluster;
+    await clusterOne(firstDimension);
+    await Promise.all(restDimensions.map(clusterOne));
 }
 
 function Editor() {
@@ -221,6 +223,13 @@ function Editor() {
       selectedBatchId && batches.some((batch) => batch.id === selectedBatchId)
         ? selectedBatchId
         : batches[batches.length - 1]?.id ?? null;
+    // Mirrors effectiveSelectedBatchId for reads from callbacks that can fire well after the
+    // render that captured it in their closure (e.g. a progressive clustering callback for a
+    // batch the user has since switched away from). Only needs to catch up within
+    // network-latency timescales (a clustering call takes seconds), not same-tick, so the
+    // usual one-commit-behind lag of an effect-based sync is not a concern here.
+    const effectiveSelectedBatchIdRef = useRef(effectiveSelectedBatchId);
+    useEffect(() => { effectiveSelectedBatchIdRef.current = effectiveSelectedBatchId; }, [effectiveSelectedBatchId]);
     const [batchData, setBatchData] = useState<BatchData | null>(null);
     const [pendingBatchIds, setPendingBatchIds] = useState<string[]>([]);
     const [clusteringBatchId, setClusteringBatchId] = useState<string | null>(null);
@@ -242,6 +251,35 @@ function Editor() {
       } finally {
         setClusteringDimensionIds((prev) => prev.filter((id) => !dimensionIds.includes(id)));
       }
+    };
+
+    // Merges one freshly-clustered dimension's result into batchData, recomputes any
+    // composite built from it, persists, and clears its own clustering indicator — called
+    // once per dimension as clusterDimensionValues' progressive callback fires, so each
+    // dimension's BSV (and any composite built from it) updates on the canvas as soon as
+    // that one dimension is done, instead of all of them waiting for the slowest.
+    //
+    // `batchId` is the batch this clustering run was started for, captured once by the
+    // caller — not read live — since a multi-dimension run can span long enough for the user
+    // to switch to a different batch before every dimension resolves. If that's happened by
+    // the time this particular dimension comes back, its result is dropped rather than merged
+    // into whatever batch is now displayed (wrong data shown) or persisted against a
+    // valueClusterings snapshot that no longer reflects the batch it was computed for.
+    const applyFreshDimensionClustering = (batchId: string, valueClustering: ValueClustering) => {
+      if (batchId !== effectiveSelectedBatchIdRef.current) {
+        console.warn(`Discarding clustering result for a dimension of batch ${batchId}: a different batch is now selected. Re-cluster to pick it up.`);
+        setClusteringDimensionIds((prev) => prev.filter((id) => !valueClustering.dimensionIds.includes(id)));
+        return;
+      }
+
+      setBatchData((prev) => {
+        if (!prev) return prev;
+        const merged = mergeValueClusterings(prev.valueClusterings, [valueClustering]);
+        const valueClusterings = recomputeAffectedComposites(merged, workspaceRef.current?.settings?.nodePosition, valueClustering.dimensionIds);
+        persistBatchValueClusterings(batchId, valueClusterings);
+        return { ...prev, valueClusterings };
+      });
+      setClusteringDimensionIds((prev) => prev.filter((id) => !valueClustering.dimensionIds.includes(id)));
     };
     const [selectedTurnOrder, setSelectedTurnOrder] = useState<number | "all">("all");
     const { getIntersectingNodes, screenToFlowPosition } = useReactFlow();
@@ -278,12 +316,22 @@ function Editor() {
       ).catch((err) => console.error("Failed to save workspace", err));
     };
 
+    // Queued (not fired independently) because progressive per-dimension clustering can call
+    // this multiple times in quick succession for the same batch, each with a full-replace
+    // snapshot of valueClusterings — the endpoint overwrites wholesale, with no merge or
+    // version check, so two such PUTs racing over the network with no ordering guarantee
+    // could land out of order and have the more-complete snapshot silently overwritten by an
+    // earlier, less-complete one. Chaining through persistQueueRef ensures each PUT is only
+    // sent once the previous one has settled, so arrival order always matches call order.
+    const persistQueueRef = useRef<Promise<unknown>>(Promise.resolve());
     const persistBatchValueClusterings = (batchId: string, valueClusterings: ValueClustering[]) => {
-      callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
-        `/apis/Workspace/${id}/Batches/${batchId}/ValueClusterings`,
-        { valueClusterings },
-        "PUT",
-      ).catch((err) => console.error("Failed to save batch value clusterings", err));
+      persistQueueRef.current = persistQueueRef.current.then(() =>
+        callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
+          `/apis/Workspace/${id}/Batches/${batchId}/ValueClusterings`,
+          { valueClusterings },
+          "PUT",
+        ).catch((err) => console.error("Failed to save batch value clusterings", err)),
+      );
     };
 
     // Every turn order (1-indexed position within a trajectory) that some trajectory in
@@ -345,6 +393,7 @@ function Editor() {
 
     const handleExtractDimension = async () => {
       if (!workspace || !batchData?.trajectories.length || !effectiveSelectedBatchId) return;
+      const batchId = effectiveSelectedBatchId;
 
       const result = await callApi<ExtractDimensionInputType, ExtractDimensionOutputType>(
         "/apis/ExtractDimension",
@@ -366,18 +415,13 @@ function Editor() {
 
       // Cluster only the dimensions we just extracted, and only for the batch being viewed.
       const extractedIds = result.dimensions.map((dimension) => dimension.id);
-      const fresh = await withClusteringIndicator(extractedIds, () => clusterDimensionValues(
+      await withClusteringIndicator(extractedIds, () => clusterDimensionValues(
         batchData,
         appendedWorkspace.dimensions ?? [],
         appendedWorkspace.domainDescription,
         extractedIds,
+        (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
       ));
-      setBatchData((prev) => {
-        if (!prev) return prev;
-        const valueClusterings = mergeValueClusterings(prev.valueClusterings, fresh);
-        persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
-        return { ...prev, valueClusterings };
-      });
     };
 
     // Merges `fresh` into the LATEST batchData at commit time (not whatever batchData looked
@@ -385,29 +429,16 @@ function Editor() {
     // have one's result clobber the other's.
     const handleDimensionValueCluster = async (dimensionIds?: string[]) => {
       if (!workspace || !batchData || !effectiveSelectedBatchId) return;
+      const batchId = effectiveSelectedBatchId;
 
       const targetIds = dimensionIds ?? (workspace.dimensions ?? []).map((dimension) => dimension.id);
-      const fresh = await withClusteringIndicator(targetIds, () => clusterDimensionValues(
+      await withClusteringIndicator(targetIds, () => clusterDimensionValues(
         batchData,
         workspace.dimensions ?? [],
         workspace.domainDescription,
         dimensionIds,
+        (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
       ));
-      setBatchData((prev) => {
-        if (!prev) return prev;
-        const merged = mergeValueClusterings(prev.valueClusterings, fresh);
-
-        // mergeValueClusterings only replaces the simple clustering(s) just recomputed above —
-        // any composite built from one of them is otherwise left stale (frozen at whatever it
-        // was when it was first crossed), so recompute every composite that includes one of
-        // the dimensions just clustered. Reads workspaceRef, not the `workspace` closure
-        // captured before the `await` above, so a composite created while clustering was in
-        // flight (e.g. the user drag-combined two dimensions while this was pending) is seen.
-        const valueClusterings = recomputeAffectedComposites(merged, workspaceRef.current?.settings?.nodePosition, targetIds);
-
-        persistBatchValueClusterings(effectiveSelectedBatchId, valueClusterings);
-        return { ...prev, valueClusterings };
-      });
     };
 
     // "Cluster all" re-runs every dimension's clustering (overwriting any manual edits made
@@ -843,36 +874,41 @@ function Editor() {
       });
     };
 
-    // Clicking a pending batch clusters its trajectory moments against every dimension,
-    // recomputes every existing composite against it, persists the result, then switches the
-    // view to it. The PUT is awaited so the batch's data is already correct server-side by the
-    // time anything re-fetches it.
+    // Clicking a pending batch switches the view to it first (while it's still unclustered),
+    // then clusters its trajectory moments against every dimension — same as
+    // handleDimensionValueCluster, each dimension's BSV (and any composite built from it)
+    // updates on the canvas as soon as that one dimension is done. The per-batch fetch effect
+    // above is guarded to skip re-fetching this batch while clusteringBatchId matches it, so
+    // this progressive, not-yet-fully-persisted local state isn't clobbered by a fresh GET.
     const handleClusterPendingBatch = async (batchId: string) => {
       if (!workspace || !id || clusteringBatchId) return;
 
       setClusteringBatchId(batchId);
       try {
         const batchResult = await getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${batchId}`);
+
+        setPendingBatchIds((ids) => ids.filter((pendingId) => pendingId !== batchId));
+        handleBatchChange(batchId);
+        setBatchData(batchResult.data);
+
         // Reads workspaceRef, not the `workspace` closure captured before the await above (a
         // real network round trip), so a dimension added/edited/deleted while this batch's
         // data was loading is reflected in what gets clustered.
         const currentWorkspace = workspaceRef.current ?? workspace;
-        const clustered = await clusterDimensionValues(
+        const targetIds = (currentWorkspace.dimensions ?? []).map((dimension) => dimension.id);
+        await withClusteringIndicator(targetIds, () => clusterDimensionValues(
           batchResult.data,
           currentWorkspace.dimensions ?? [],
           currentWorkspace.domainDescription,
-        );
-        const valueClusterings = recomputeAffectedComposites(clustered, workspaceRef.current?.settings?.nodePosition);
+          undefined,
+          (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
+        ));
 
-        await callApi<ReplaceBatchValueClusteringsInputType, ReplaceBatchValueClusteringsOutputType>(
-          `/apis/Workspace/${id}/Batches/${batchId}/ValueClusterings`,
-          { valueClusterings },
-          "PUT",
-        );
-
-        setPendingBatchIds((ids) => ids.filter((pendingId) => pendingId !== batchId));
-        handleBatchChange(batchId);
-        setBatchData({ ...batchResult.data, valueClusterings });
+        // applyFreshDimensionClustering's persists are fire-and-forget (queued, not awaited),
+        // so wait for the queue to drain before releasing the fetch-effect guard above —
+        // otherwise that effect could re-fire (clusteringBatchId resetting is itself a
+        // dependency change) and GET the batch before the last dimension's PUT has landed.
+        await persistQueueRef.current;
       } finally {
         setClusteringBatchId(null);
       }
@@ -889,6 +925,11 @@ function Editor() {
 
     useEffect(() => {
       if (!id || !effectiveSelectedBatchId) return;
+      // Skip while this exact batch is the one being progressively clustered —
+      // handleClusterPendingBatch switches into viewing it before clustering finishes so its
+      // BSVs can update as each dimension resolves, and a fresh GET here would clobber those
+      // in-progress local updates with the batch's still-mostly-unclustered server-side data.
+      if (clusteringBatchId === effectiveSelectedBatchId) return;
       // Guards against rapid batch switching (e.g. dragging the slider) resolving out of
       // order: React runs this cleanup for the PREVIOUS effect instance before the new one
       // fires whenever effectiveSelectedBatchId changes, so an in-flight fetch for a batch
@@ -906,7 +947,7 @@ function Editor() {
         });
       });
       return () => { cancelled = true; };
-    }, [id, effectiveSelectedBatchId]);
+    }, [id, effectiveSelectedBatchId, clusteringBatchId]);
 
     // Polls a cheap metadata-and-batch-list endpoint (never full trajectory data) for
     // batches pushed while this tab is open. Depends only on `id` — never on `workspace`/
