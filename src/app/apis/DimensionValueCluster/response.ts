@@ -1,5 +1,5 @@
 import { DimensionValueClusterInputType, DimensionValueClusterOutputType } from '../types';
-import { callLLM, ApiLine } from '../LLM';
+import { callLLM, ApiLine, LLMAuthError } from '../LLM';
 import { getCacheablePrefix, getDimensionInstructions, getSystemPrompt } from './prompt';
 import { TrajectoryMoment } from '@/models/ValueClustering';
 import { safeJsonParse } from '@/utils/jsonParser';
@@ -18,7 +18,7 @@ type TurnValueAssignment = {
 // propagated, so one dimension failing to parse doesn't surface as a failed request — it
 // just comes back with nothing clustered.
 export async function dimensionValueCluster(input: DimensionValueClusterInputType): Promise<DimensionValueClusterOutputType> {
-    const { trajectories, dimension, domainDescription } = input;
+    const { trajectories, dimension, domainDescription, llmCredentials } = input;
 
     try {
         const knownTurnKeys = new Set<string>();
@@ -40,7 +40,7 @@ export async function dimensionValueCluster(input: DimensionValueClusterInputTyp
             },
         ];
 
-        const text = await callLLM(getSystemPrompt(), messages);
+        const text = await callLLM(getSystemPrompt(), messages, {}, llmCredentials);
         console.log(`Dimension value cluster raw result for ${dimension.id}:`, text);
 
         const assignments = safeJsonParse<TurnValueAssignment[]>(text, 'valueAssignments') ?? [];
@@ -57,6 +57,8 @@ export async function dimensionValueCluster(input: DimensionValueClusterInputTyp
 
         return { valueClustering: { dimensionIds: [dimension.id], valueMapping } };
     } catch (error) {
+        if (error instanceof LLMAuthError) throw error;
+
         console.error(`Error clustering dimension ${dimension.id}:`, error);
         return { valueClustering: { dimensionIds: [dimension.id], valueMapping: {} } };
     }

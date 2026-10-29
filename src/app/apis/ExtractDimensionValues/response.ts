@@ -1,5 +1,5 @@
 import { ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType } from '../types';
-import { callLLM } from '../LLM';
+import { callLLM, LLMAuthError } from '../LLM';
 import { getPrompt, getSystemPrompt } from './prompt';
 import { Dimension } from '@/models/Dimension';
 import { ValueClustering, TrajectoryMoment } from '@/models/ValueClustering';
@@ -14,7 +14,7 @@ export async function extractDimensionValues(input: ExtractDimensionValuesInputT
 
     try {
 
-    const {trajectories, dimensions, domainDescription} = input
+    const {trajectories, dimensions, domainDescription, llmCredentials} = input
 
     const text = await callLLM(
         getSystemPrompt(),
@@ -32,7 +32,9 @@ export async function extractDimensionValues(input: ExtractDimensionValuesInputT
               },
             ],
           },
-        ]
+        ],
+        {},
+        llmCredentials,
       );
 
     console.log("Extract dimension values raw result:", text);
@@ -66,6 +68,8 @@ export async function extractDimensionValues(input: ExtractDimensionValuesInputT
     };
 
     } catch (error) {
+        if (error instanceof LLMAuthError) throw error;
+
         console.error('Error in extracting dimension values:', error);
 
         return {

@@ -45,7 +45,13 @@
     font-size: 14px;
 }
 
+.dialog-error {
+    color: #b00020;
+    font-weight: 600;
+}
+
 .dialog input,
+.dialog select,
 .dialog textarea {
     font: inherit;
     padding: 6px 8px;

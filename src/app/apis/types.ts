@@ -3,6 +3,7 @@ import { Dimension } from "@/models/Dimension";
 import { ValueClustering } from "@/models/ValueClustering";
 import { Workspace } from "@/models/Workspace";
 import { Batch, BatchData } from "@/models/Batch";
+import { LLMCredentials } from "./LLM";
 
 export type ExtractDimensionInputType = {
     trajectories : Trajectory[];
@@ -11,6 +12,9 @@ export type ExtractDimensionInputType = {
     // Dimensions already present in the workspace; the LLM is asked to propose
     // additional dimensions distinct from these rather than repeating them.
     existingDimensions? : Pick<Dimension, "name" | "description">[];
+    // Only present when the server has no LLM key of its own configured — see
+    // GetLlmConfigOutputType / ApiKeyDialog.
+    llmCredentials? : LLMCredentials;
 };
 
 export type ExtractDimensionOutputType = {
@@ -21,6 +25,7 @@ export type DimensionValueClusterInputType = {
     trajectories : Trajectory[];
     dimension: Dimension;
     domainDescription? : string;
+    llmCredentials? : LLMCredentials;
 };
 
 export type DimensionValueClusterOutputType = {
@@ -33,6 +38,7 @@ export type ExtractDimensionValuesInputType = {
     // values distinct from those, rather than overwriting them.
     dimensions : Pick<Dimension, "id" | "name" | "description" | "values">[];
     domainDescription? : string;
+    llmCredentials? : LLMCredentials;
 };
 
 export type ExtractDimensionValuesOutputType = {
@@ -90,4 +96,10 @@ export type ReplaceBatchValueClusteringsInputType = {
 export type ReplaceBatchValueClusteringsOutputType = {
     batchId : string;
     valueClusterings : ValueClustering[];
+};
+
+export type GetLlmConfigOutputType = {
+    // Whether the server itself has an LLM API key configured. When false, the client
+    // must supply its own llmCredentials with every LLM-backed request.
+    configured : boolean;
 };

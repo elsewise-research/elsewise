@@ -1,3 +1,11 @@
+// Attaches the HTTP status code to the thrown error so callers can distinguish failure
+// kinds (e.g. a 401 auth error) without parsing the message string.
+export type ApiError = Error & { status: number };
+
+function apiError(url: string, status: number): ApiError {
+  return Object.assign(new Error(`${url} API error: ${status}`), { status });
+}
+
 export const callApi = async <B, T>(url: string, body: B, method: 'POST' | 'PUT' = 'POST'): Promise<T> => {
     const response = await fetch(url, {
       method,
@@ -6,7 +14,7 @@ export const callApi = async <B, T>(url: string, body: B, method: 'POST' | 'PUT'
     });
 
     if (!response.ok) {
-      throw new Error(`${url} API error: ${response.status}`);
+      throw apiError(url, response.status);
     }
 
     const result = await response.json();
@@ -17,7 +25,7 @@ export const callApi = async <B, T>(url: string, body: B, method: 'POST' | 'PUT'
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(`${url} API error: ${response.status}`);
+      throw apiError(url, response.status);
     }
 
     const result = await response.json();

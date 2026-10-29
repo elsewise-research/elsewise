@@ -9,11 +9,13 @@ import { ReactFlow,
   type Node,
   type NodeChange } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Download, Info, Plug, Plus, Sparkles, Group, FilterX } from "lucide-react";
+import { Download, Info, Plug, Plus, Sparkles, Group, FilterX, KeyRound } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
 import { Dimension } from "@/models/Dimension";
 import { ValueClustering, TrajectoryMoment } from "@/models/ValueClustering";
 import { Batch, BatchData } from "@/models/Batch";
+import { LLMCredentials } from "@/app/apis/LLM";
+import { loadLLMCredentials, saveLLMCredentials, clearLLMCredentials } from "@/utils/llmCredentials";
 import {
   appendDimension,
   crossDimensions,
@@ -42,6 +44,7 @@ import {
   ExtractDimensionValuesOutputType,
   GetWorkspaceOutputType,
   GetBatchDataOutputType,
+  GetLlmConfigOutputType,
   ReplaceWorkspaceInputType,
   ReplaceWorkspaceOutputType,
   ReplaceBatchValueClusteringsInputType,
@@ -52,6 +55,7 @@ import CompositionalBSV from "@/components/CompositionalBSV";
 import TrajectoryViewer  from "@/components/TrajectoryViewer";
 import AddDimensionDialog, { type AddDimensionInput } from "@/components/dialogs/AddDimensionDialog";
 import IngestionCredentialDialog from "@/components/dialogs/IngestionCredentialDialog";
+import ApiKeyDialog from "@/components/dialogs/ApiKeyDialog";
 import icon from "@/app/icon.png";
 import styles from "./editor.module.css";
 
@@ -189,6 +193,7 @@ async function clusterDimensionValues(
     dimensions: Dimension[],
     domainDescription: string | undefined,
     dimensionIds: string[] | undefined,
+    credentials: LLMCredentials | undefined,
     onDimensionClustered: (valueClustering: ValueClustering) => void,
 ): Promise<void> {
     if (!batchData.trajectories.length || !dimensions.length) return;
@@ -201,7 +206,7 @@ async function clusterDimensionValues(
     const clusterOne = async (dimension: Dimension) => {
         const result = await callApi<DimensionValueClusterInputType, DimensionValueClusterOutputType>(
           "/apis/DimensionValueCluster",
-          { trajectories: batchData.trajectories, dimension, domainDescription },
+          { trajectories: batchData.trajectories, dimension, domainDescription, llmCredentials: credentials },
         );
         onDimensionClustered(result.valueClustering);
     };
@@ -235,6 +240,12 @@ function Editor() {
     const [clusteringBatchId, setClusteringBatchId] = useState<string | null>(null);
     const [ingestionToken, setIngestionToken] = useState<string | null>(null);
     const [isIngestionDialogOpen, setIsIngestionDialogOpen] = useState(false);
+    // null = not checked yet. When false, every LLM-backed request must carry its own
+    // llmCredentials, sourced from this browser's localStorage via the dialog below.
+    const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
+    const [llmCredentials, setLlmCredentials] = useState<LLMCredentials | null>(() => loadLLMCredentials());
+    const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+    const [apiKeyDialogError, setApiKeyDialogError] = useState<string | null>(null);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -352,6 +363,47 @@ function Editor() {
       [trajectoryColors],
     );
 
+    // Called at the top of every LLM-triggering handler. If the server has its own key,
+    // nothing further is needed. Otherwise, a stored key is used if present; if not, this
+    // opens the dialog and tells the caller to stop (the user has to re-trigger the action
+    // once they've entered one — no auto-retry).
+    type LlmReadiness = { ready: true; credentials?: LLMCredentials } | { ready: false };
+    const ensureLlmCredentials = (): LlmReadiness => {
+      if (serverConfigured) return { ready: true };
+      if (serverConfigured === null) return { ready: false }; // still checking
+      if (llmCredentials) return { ready: true, credentials: llmCredentials };
+      setApiKeyDialogError(null);
+      setIsApiKeyDialogOpen(true);
+      return { ready: false };
+    };
+
+    // Called from the catch block of every LLM-triggering call. Returns true (and has
+    // already reopened the dialog, pre-filled with the rejected key) iff the failure was
+    // specifically an auth error — every other error kind is left for the caller to handle
+    // (today: none of them do anything special, so it just propagates, same as before this
+    // feature existed).
+    const handleLlmAuthFailure = (err: unknown): boolean => {
+      const status = (err as { status?: number } | null | undefined)?.status;
+      if (status !== 401) return false;
+      setApiKeyDialogError("That key was rejected by the provider — check it and try again.");
+      setIsApiKeyDialogOpen(true);
+      return true;
+    };
+
+    const handleSaveLlmCredentials = (credentials: LLMCredentials) => {
+      saveLLMCredentials(credentials);
+      setLlmCredentials(credentials);
+      setIsApiKeyDialogOpen(false);
+      setApiKeyDialogError(null);
+    };
+
+    const handleClearLlmCredentials = () => {
+      clearLLMCredentials();
+      setLlmCredentials(null);
+      setIsApiKeyDialogOpen(false);
+      setApiKeyDialogError(null);
+    };
+
     const handleAddDimension = () => {
       setIsAddDimensionOpen(true);
     };
@@ -366,15 +418,24 @@ function Editor() {
       let values = sanitizeDimensionValues(input.values);
 
       if (batchData?.trajectories.length) {
-        const result = await callApi<ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType>(
-          "/apis/ExtractDimensionValues",
-          {
-            trajectories: batchData.trajectories,
-            dimensions: [{ id: dimensionId, name: input.name, description: input.description, values }],
-            domainDescription: workspace.domainDescription,
-          },
-        );
-        values = sanitizeDimensionValues(result.dimensions[0]?.values ?? values);
+        const check = ensureLlmCredentials();
+        if (!check.ready) return;
+
+        try {
+          const result = await callApi<ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType>(
+            "/apis/ExtractDimensionValues",
+            {
+              trajectories: batchData.trajectories,
+              dimensions: [{ id: dimensionId, name: input.name, description: input.description, values }],
+              domainDescription: workspace.domainDescription,
+              llmCredentials: check.credentials,
+            },
+          );
+          values = sanitizeDimensionValues(result.dimensions[0]?.values ?? values);
+        } catch (err) {
+          if (handleLlmAuthFailure(err)) return;
+          throw err;
+        }
       }
 
       const dimension: Dimension = {
@@ -395,14 +456,24 @@ function Editor() {
       if (!workspace || !batchData?.trajectories.length || !effectiveSelectedBatchId) return;
       const batchId = effectiveSelectedBatchId;
 
-      const result = await callApi<ExtractDimensionInputType, ExtractDimensionOutputType>(
-        "/apis/ExtractDimension",
-        {
-          trajectories: batchData.trajectories,
-          domainDescription: workspace.domainDescription,
-          existingDimensions: workspace.dimensions?.map(({ name, description }) => ({ name, description })),
-        },
-      );
+      const check = ensureLlmCredentials();
+      if (!check.ready) return;
+
+      let result: ExtractDimensionOutputType;
+      try {
+        result = await callApi<ExtractDimensionInputType, ExtractDimensionOutputType>(
+          "/apis/ExtractDimension",
+          {
+            trajectories: batchData.trajectories,
+            domainDescription: workspace.domainDescription,
+            existingDimensions: workspace.dimensions?.map(({ name, description }) => ({ name, description })),
+            llmCredentials: check.credentials,
+          },
+        );
+      } catch (err) {
+        if (handleLlmAuthFailure(err)) return;
+        throw err;
+      }
 
       // Same reasoning as handleSubmitAddDimension: use workspaceRef, not the closure captured
       // before the await above, as the base to append the extracted dimensions onto.
@@ -415,13 +486,19 @@ function Editor() {
 
       // Cluster only the dimensions we just extracted, and only for the batch being viewed.
       const extractedIds = result.dimensions.map((dimension) => dimension.id);
-      await withClusteringIndicator(extractedIds, () => clusterDimensionValues(
-        batchData,
-        appendedWorkspace.dimensions ?? [],
-        appendedWorkspace.domainDescription,
-        extractedIds,
-        (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
-      ));
+      try {
+        await withClusteringIndicator(extractedIds, () => clusterDimensionValues(
+          batchData,
+          appendedWorkspace.dimensions ?? [],
+          appendedWorkspace.domainDescription,
+          extractedIds,
+          check.credentials,
+          (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
+        ));
+      } catch (err) {
+        if (handleLlmAuthFailure(err)) return;
+        throw err;
+      }
     };
 
     // Merges `fresh` into the LATEST batchData at commit time (not whatever batchData looked
@@ -431,14 +508,23 @@ function Editor() {
       if (!workspace || !batchData || !effectiveSelectedBatchId) return;
       const batchId = effectiveSelectedBatchId;
 
+      const check = ensureLlmCredentials();
+      if (!check.ready) return;
+
       const targetIds = dimensionIds ?? (workspace.dimensions ?? []).map((dimension) => dimension.id);
-      await withClusteringIndicator(targetIds, () => clusterDimensionValues(
-        batchData,
-        workspace.dimensions ?? [],
-        workspace.domainDescription,
-        dimensionIds,
-        (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
-      ));
+      try {
+        await withClusteringIndicator(targetIds, () => clusterDimensionValues(
+          batchData,
+          workspace.dimensions ?? [],
+          workspace.domainDescription,
+          dimensionIds,
+          check.credentials,
+          (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
+        ));
+      } catch (err) {
+        if (handleLlmAuthFailure(err)) return;
+        throw err;
+      }
     };
 
     // "Cluster all" re-runs every dimension's clustering (overwriting any manual edits made
@@ -883,6 +969,9 @@ function Editor() {
     const handleClusterPendingBatch = async (batchId: string) => {
       if (!workspace || !id || clusteringBatchId) return;
 
+      const check = ensureLlmCredentials();
+      if (!check.ready) return;
+
       setClusteringBatchId(batchId);
       try {
         const batchResult = await getApi<GetBatchDataOutputType>(`/apis/Workspace/${id}/Batches/${batchId}`);
@@ -901,6 +990,7 @@ function Editor() {
           currentWorkspace.dimensions ?? [],
           currentWorkspace.domainDescription,
           undefined,
+          check.credentials,
           (valueClustering) => applyFreshDimensionClustering(batchId, valueClustering),
         ));
 
@@ -909,10 +999,16 @@ function Editor() {
         // otherwise that effect could re-fire (clusteringBatchId resetting is itself a
         // dependency change) and GET the batch before the last dimension's PUT has landed.
         await persistQueueRef.current;
+      } catch (err) {
+        if (!handleLlmAuthFailure(err)) throw err;
       } finally {
         setClusteringBatchId(null);
       }
     };
+
+    useEffect(() => {
+      getApi<GetLlmConfigOutputType>("/apis/LLMConfig").then((result) => setServerConfigured(result.configured));
+    }, []);
 
     useEffect(() => {
       if (!id) return;
@@ -1114,6 +1210,11 @@ function Editor() {
           <Image src={icon} alt="" className={styles["logo"]} />
           <h1>ELSEWISE</h1>
           <div className={styles["header-toolbar"]}>
+          {serverConfigured === false && (
+            <button onClick={() => { setApiKeyDialogError(null); setIsApiKeyDialogOpen(true); }} title="configure your LLM API key" aria-label="configure your LLM API key">
+              <KeyRound size={16} />
+            </button>
+          )}
           <button onClick={() => {setIsIngestionDialogOpen(true)}} title="push trajectories from an external tool" aria-label="push trajectories from an external tool" disabled={!ingestionToken}>
             <Plug size={16} />
           </button>
@@ -1211,6 +1312,15 @@ function Editor() {
             workspaceId={id}
             ingestionToken={ingestionToken}
             onCancel={() => setIsIngestionDialogOpen(false)}
+          />
+        )}
+        {isApiKeyDialogOpen && (
+          <ApiKeyDialog
+            initialCredentials={llmCredentials}
+            errorMessage={apiKeyDialogError}
+            onSave={handleSaveLlmCredentials}
+            onClear={handleClearLlmCredentials}
+            onCancel={() => setIsApiKeyDialogOpen(false)}
           />
         )}
       </>

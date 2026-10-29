@@ -41,9 +41,22 @@ const DEFAULT_OPENAI_OPTIONS: ApiOptions = {
   maxTokens: 32500,
 };
 
-type LLMProvider = 'anthropic' | 'openai';
+export type LLMProvider = 'anthropic' | 'openai';
+export type LLMCredentials = { provider: LLMProvider; apiKey: string };
 
-// Prefers Anthropic when both keys are configured; falls back to OpenAI.
+// Thrown specifically when a provider rejects the request as an authentication failure
+// (bad/expired API key), so callers can distinguish this from every other failure mode
+// (bad prompt, rate limit, parse error, ...) and prompt for a new key instead of just
+// swallowing it like other per-dimension failures.
+export class LLMAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LLMAuthError';
+  }
+}
+
+// Prefers Anthropic when both keys are configured; falls back to OpenAI. Only consulted
+// when no client-supplied credentials override is given.
 function resolveProvider(): LLMProvider {
   if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
   if (process.env.OPENAI_API_KEY) return 'openai';
@@ -54,6 +67,7 @@ async function callAnthropicAPI(
   systemPrompt: string,
   messages: Array<ApiLine>,
   options: ApiOptions = {},
+  apiKeyOverride?: string,
 ) {
   // const { model, temperature, maxTokens } = { ...DEFAULT_ANTHROPIC_OPTIONS, ...options };
   const { model, maxTokens } = { ...DEFAULT_ANTHROPIC_OPTIONS, ...options };
@@ -62,7 +76,7 @@ async function callAnthropicAPI(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      'x-api-key': apiKeyOverride ?? process.env.ANTHROPIC_API_KEY!,
       'anthropic-version': '2023-06-01',
     } as HeadersInit,
     body: JSON.stringify({
@@ -90,6 +104,7 @@ async function callAnthropicAPI(
       // If parsing fails, use the raw error text
       errorMessage = `${errorMessage}: ${errorText}`;
     }
+    if (response.status === 401) throw new LLMAuthError(errorMessage);
     throw new Error(errorMessage);
   }
 
@@ -128,6 +143,7 @@ async function callOpenAIAPI(
   systemPrompt: string,
   messages: Array<ApiLine>,
   options: ApiOptions = {},
+  apiKeyOverride?: string,
 ) {
   const { model, maxTokens } = { ...DEFAULT_OPENAI_OPTIONS, ...options };
 
@@ -135,7 +151,7 @@ async function callOpenAIAPI(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${apiKeyOverride ?? process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
       model,
@@ -157,6 +173,7 @@ async function callOpenAIAPI(
     } catch {
       errorMessage = `${errorMessage}: ${errorText}`;
     }
+    if (response.status === 401) throw new LLMAuthError(errorMessage);
     throw new Error(errorMessage);
   }
 
@@ -171,18 +188,21 @@ async function callOpenAIAPI(
 }
 
 /**
- * Makes a request to whichever LLM provider is configured (Anthropic preferred,
- * OpenAI as a fallback — see resolveProvider).
+ * Makes a request to whichever LLM provider is configured — either the caller's own
+ * `credentials` (a visitor-supplied key, when the server has none configured), or
+ * whichever provider's env var is set (Anthropic preferred, OpenAI as a fallback — see
+ * resolveProvider).
  */
 export async function callLLM(
   systemPrompt: string,
   messages: Array<ApiLine>,
   options: ApiOptions = {},
+  credentials?: LLMCredentials,
 ) {
-  const provider = resolveProvider();
+  const provider = credentials?.provider ?? resolveProvider();
   return provider === 'anthropic'
-    ? callAnthropicAPI(systemPrompt, messages, options)
-    : callOpenAIAPI(systemPrompt, messages, options);
+    ? callAnthropicAPI(systemPrompt, messages, options, credentials?.apiKey)
+    : callOpenAIAPI(systemPrompt, messages, options, credentials?.apiKey);
 }
 
 /**
@@ -205,6 +225,9 @@ export function withLLMApi<T, R>(
       console.error(`[${reqId}] ❌ ${route} Error:`, error);
       if (error instanceof Error && error.name === 'AbortError') {
         return NextResponse.json({ error: 'Request was cancelled' }, { status: 499 });
+      }
+      if (error instanceof LLMAuthError) {
+        return NextResponse.json({ error: error.message, code: 'llm_auth_error' }, { status: 401 });
       }
 
       // Properly serialize error message

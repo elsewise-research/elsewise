@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { ExtractDimensionInputType, ExtractDimensionOutputType } from '../types';
-import { callLLM } from '../LLM';
+import { callLLM, LLMAuthError } from '../LLM';
 import { getPrompt, getSystemPrompt } from './prompt';
 import { Dimension } from '@/models/Dimension';
 import { safeJsonParse } from '@/utils/jsonParser';
@@ -8,8 +8,8 @@ import { safeJsonParse } from '@/utils/jsonParser';
 export async function extractDimension(input: ExtractDimensionInputType): Promise<ExtractDimensionOutputType> {
 
     try {
-    
-    const {trajectories, numDimensions = 3, domainDescription, existingDimensions} = input
+
+    const {trajectories, numDimensions = 3, domainDescription, existingDimensions, llmCredentials} = input
 
     const text = await callLLM(
         getSystemPrompt(),
@@ -28,7 +28,9 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
               },
             ],
           },
-        ]
+        ],
+        {},
+        llmCredentials,
       );
 
     console.log("Extract dimension raw result:", text);
@@ -44,6 +46,8 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
     };
 
     } catch (error) {
+        if (error instanceof LLMAuthError) throw error;
+
         console.error('Error in extracting dimension:', error);
 
         return {
