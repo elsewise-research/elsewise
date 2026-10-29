@@ -1,5 +1,5 @@
 import { DimensionValueClusterInputType, DimensionValueClusterOutputType } from '../types';
-import { callAnthropicAPI, ApiLine } from '../LLM';
+import { callLLM, ApiLine } from '../LLM';
 import { getCacheablePrefix, getDimensionInstructions, getSystemPrompt } from './prompt';
 import { TrajectoryMoment } from '@/models/ValueClustering';
 import { safeJsonParse } from '@/utils/jsonParser';
@@ -40,7 +40,7 @@ export async function dimensionValueCluster(input: DimensionValueClusterInputTyp
             },
         ];
 
-        const text = await callAnthropicAPI(getSystemPrompt(), messages);
+        const text = await callLLM(getSystemPrompt(), messages);
         console.log(`Dimension value cluster raw result for ${dimension.id}:`, text);
 
         const assignments = safeJsonParse<TurnValueAssignment[]>(text, 'valueAssignments') ?? [];

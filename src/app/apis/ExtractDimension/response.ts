@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { ExtractDimensionInputType, ExtractDimensionOutputType } from '../types';
-import { callAnthropicAPI } from '../LLM';
+import { callLLM } from '../LLM';
 import { getPrompt, getSystemPrompt } from './prompt';
 import { Dimension } from '@/models/Dimension';
 import { safeJsonParse } from '@/utils/jsonParser';
@@ -11,7 +11,7 @@ export async function extractDimension(input: ExtractDimensionInputType): Promis
     
     const {trajectories, numDimensions = 3, domainDescription, existingDimensions} = input
 
-    const text = await callAnthropicAPI(
+    const text = await callLLM(
         getSystemPrompt(),
         [
           {

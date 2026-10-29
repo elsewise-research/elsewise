@@ -1,5 +1,5 @@
 import { ExtractDimensionValuesInputType, ExtractDimensionValuesOutputType } from '../types';
-import { callAnthropicAPI } from '../LLM';
+import { callLLM } from '../LLM';
 import { getPrompt, getSystemPrompt } from './prompt';
 import { Dimension } from '@/models/Dimension';
 import { ValueClustering, TrajectoryMoment } from '@/models/ValueClustering';
@@ -16,7 +16,7 @@ export async function extractDimensionValues(input: ExtractDimensionValuesInputT
 
     const {trajectories, dimensions, domainDescription} = input
 
-    const text = await callAnthropicAPI(
+    const text = await callLLM(
         getSystemPrompt(),
         [
           {

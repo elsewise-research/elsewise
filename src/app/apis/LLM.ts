@@ -30,34 +30,39 @@ export function getRequestId(request?: Request): string {
   return request.headers.get('x-request-id') || 'no-req-id';
 }
 
-const DEFAULT_API_OPTIONS: ApiOptions = {
+const DEFAULT_ANTHROPIC_OPTIONS: ApiOptions = {
   model: 'claude-haiku-4-5-20251001',
   temperature: 0.8,
   maxTokens: 32500,
 };
 
-/**
- * Make a request to the Anthropic API
- */
-export async function callAnthropicAPI(
+const DEFAULT_OPENAI_OPTIONS: ApiOptions = {
+  model: 'gpt-5-mini',
+  maxTokens: 32500,
+};
+
+type LLMProvider = 'anthropic' | 'openai';
+
+// Prefers Anthropic when both keys are configured; falls back to OpenAI.
+function resolveProvider(): LLMProvider {
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  throw new Error('No LLM provider configured — set ANTHROPIC_API_KEY or OPENAI_API_KEY');
+}
+
+async function callAnthropicAPI(
   systemPrompt: string,
   messages: Array<ApiLine>,
   options: ApiOptions = {},
 ) {
-  // Check if API key is available
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error('ANTHROPIC_API_KEY is not set');
-    throw new Error('Anthropic API key is not configured');
-  }
-
-  // const { model, temperature, maxTokens } = { ...DEFAULT_API_OPTIONS, ...options };
-  const { model, maxTokens } = { ...DEFAULT_API_OPTIONS, ...options };
+  // const { model, temperature, maxTokens } = { ...DEFAULT_ANTHROPIC_OPTIONS, ...options };
+  const { model, maxTokens } = { ...DEFAULT_ANTHROPIC_OPTIONS, ...options };
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'x-api-key': process.env.ANTHROPIC_API_KEY!,
       'anthropic-version': '2023-06-01',
     } as HeadersInit,
     body: JSON.stringify({
@@ -107,6 +112,77 @@ export async function callAnthropicAPI(
   }
 
   return contentItem.text;
+}
+
+// Flattens an ApiLine's text blocks into one string. Image content and Anthropic's
+// cache_control hint (prompt caching is automatic server-side on OpenAI, no flag needed)
+// aren't used by any current caller, so they're simply ignored here rather than translated.
+function flattenApiLineText(line: ApiLine): string {
+  return line.content
+    .filter((block) => block.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join('\n');
+}
+
+async function callOpenAIAPI(
+  systemPrompt: string,
+  messages: Array<ApiLine>,
+  options: ApiOptions = {},
+) {
+  const { model, maxTokens } = { ...DEFAULT_OPENAI_OPTIONS, ...options };
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((line) => ({ role: line.role, content: flattenApiLineText(line) })),
+      ],
+      // gpt-5-family models reject `max_tokens` and `temperature`; use max_completion_tokens.
+      max_completion_tokens: maxTokens,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `OpenAI API error (${response.status})`;
+    try {
+      const errorData = JSON.parse(errorText);
+      errorMessage = errorData.error?.message ?? `${errorMessage}: ${errorText}`;
+    } catch {
+      errorMessage = `${errorMessage}: ${errorText}`;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') {
+    console.error('Unexpected OpenAI response structure:', JSON.stringify(data));
+    throw new Error('Invalid OpenAI response structure: choices[0].message.content missing or not a string');
+  }
+
+  return content;
+}
+
+/**
+ * Makes a request to whichever LLM provider is configured (Anthropic preferred,
+ * OpenAI as a fallback — see resolveProvider).
+ */
+export async function callLLM(
+  systemPrompt: string,
+  messages: Array<ApiLine>,
+  options: ApiOptions = {},
+) {
+  const provider = resolveProvider();
+  return provider === 'anthropic'
+    ? callAnthropicAPI(systemPrompt, messages, options)
+    : callOpenAIAPI(systemPrompt, messages, options);
 }
 
 /**
