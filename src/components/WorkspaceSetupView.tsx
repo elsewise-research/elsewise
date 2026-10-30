@@ -117,6 +117,9 @@ function WorkspaceSetupView({}) {
     return (
       <>
         <div>
+          <h1>Start by <a href="https://elsewise-agent-builder.vercel.app/">building your agent {">>"}</a></h1>
+        </div>
+        <div>
           <h1>Create New Workspace from Trajectories</h1>
           <input type="file" accept="application/json" onChange={handleTrajectoriesFileChange} />
           <button onClick={handleUploadTrajectories} disabled={!trajectoryFile || loading}>
