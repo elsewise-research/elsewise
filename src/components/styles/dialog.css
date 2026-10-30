@@ -22,6 +22,7 @@
     max-height: 90vh; 
 }
 
+.dialog h1,
 .dialog h2 {
     margin: 0;
     font-size: 16px;
@@ -202,4 +203,102 @@
 
 .trajectory-step p{
     color: #888;
+}
+
+.workspace-setup {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 40px 20px;
+    background: #f5f5f5;
+}
+
+.workspace-setup-dialog {
+    width: 480px;
+}
+
+h1.workspace-setup-headline {
+    margin: 0;
+    font-size: 24px;
+    text-align: center;
+}
+
+.workspace-setup-headline a {
+    color: #333;
+    text-decoration: none;
+}
+
+.workspace-setup-headline a:hover {
+    color: #000;
+    text-decoration: underline;
+}
+
+.workspace-setup-subtitle {
+    margin: 0;
+    font-size: 13px;
+    color: #888;
+    text-align: center;
+}
+
+.workspace-setup-options {
+    width: 100%;
+    /* Without this, column widths follow content's preferred size — the native file input's
+       wide intrinsic width would push a column (and the table) past the dialog's width,
+       requiring a scrollbar. Fixed layout makes the 50% widths below authoritative instead. */
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 16px 8px;
+}
+
+.workspace-setup-option {
+    width: 50%;
+    vertical-align: top;
+}
+
+.workspace-setup-option p {
+    margin: 0;
+}
+
+.workspace-setup-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.workspace-setup-upload-row input[type="file"] {
+    flex: 1;
+    min-width: 0;
+}
+
+.workspace-setup-upload-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid #333;
+    background: #333;
+    color: white;
+    cursor: pointer;
+}
+
+.workspace-setup-upload-button:disabled {
+    background: white;
+    color: #999;
+    border-color: #ccc;
+    cursor: default;
+}
+
+.workspace-setup-spin {
+    animation: workspace-setup-spin 1s linear infinite;
+}
+
+@keyframes workspace-setup-spin {
+    to { transform: rotate(360deg); }
 }

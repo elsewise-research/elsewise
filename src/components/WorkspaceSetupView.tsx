@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from "react";
+import { Upload, Loader2 } from "lucide-react";
 import { Workspace } from "@/models/Workspace";
 import { Trajectory } from "@/models/Trajectory";
 import { Batch, BatchData } from "@/models/Batch";
@@ -12,6 +13,7 @@ import {
   AppendTrajectoriesOutputType,
 } from "@/app/apis/types";
 import { processTrajectoriesText } from "@/utils/trajectory";
+import "./styles/dialog.css";
 
 // The ingestion endpoint is Bearer-token authed, which callApi doesn't support headers for,
 // so this one call is made directly rather than through the shared helper.
@@ -115,26 +117,59 @@ function WorkspaceSetupView({}) {
     };
 
     return (
-      <>
-        <div>
-          <h1>Start by <a href="https://elsewise-agent-builder.vercel.app/">building your agent {">>"}</a></h1>
+      <div className="workspace-setup">
+        <div className="dialog workspace-setup-dialog">
+          <h1 className="workspace-setup-headline">
+            <a href="https://elsewise-agent-builder.vercel.app/" target="_blank" rel="noopener noreferrer">Start with building your agent {">>"}</a>
+          </h1>
+          <p className="workspace-setup-subtitle">Or set up a workspace directly:</p>
+          <table className="workspace-setup-options">
+            <tbody>
+              <tr>
+                <td className="workspace-setup-option">
+                  <p>New Workspace from Trajectories</p>
+                </td>
+                <td className="workspace-setup-option">
+                  <p>Restore Existing Workspace</p>
+                </td>
+              </tr>
+              <tr>
+                <td className="workspace-setup-option">
+                  <div className="workspace-setup-upload-row">
+                    <input type="file" accept="application/json" onChange={handleTrajectoriesFileChange} />
+                    <button
+                      type="submit"
+                      className="workspace-setup-upload-button"
+                      onClick={handleUploadTrajectories}
+                      disabled={!trajectoryFile || loading}
+                      title={loading ? "Uploading..." : "Upload"}
+                      aria-label={loading ? "Uploading" : "Upload"}
+                    >
+                      {loading ? <Loader2 size={16} className="workspace-setup-spin" /> : <Upload size={16} />}
+                    </button>
+                  </div>
+                </td>
+                <td className="workspace-setup-option">
+                  <div className="workspace-setup-upload-row">
+                    <input type="file" accept="application/json" onChange={handleWorkspaceFileChange} />
+                    <button
+                      type="submit"
+                      className="workspace-setup-upload-button"
+                      onClick={handleUploadWorkspace}
+                      disabled={!workspaceFile || loading}
+                      title={loading ? "Uploading..." : "Upload"}
+                      aria-label={loading ? "Uploading" : "Upload"}
+                    >
+                      {loading ? <Loader2 size={16} className="workspace-setup-spin" /> : <Upload size={16} />}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {error && <p className="dialog-error">{error}</p>}
         </div>
-        <div>
-          <h1>Create New Workspace from Trajectories</h1>
-          <input type="file" accept="application/json" onChange={handleTrajectoriesFileChange} />
-          <button onClick={handleUploadTrajectories} disabled={!trajectoryFile || loading}>
-            {loading ? "Uploading..." : "Upload"}
-          </button>
-        </div>
-        <div>
-          <h1>Restore Existing Workspace</h1>
-          <input type="file" accept="application/json" onChange={handleWorkspaceFileChange} />
-          <button onClick={handleUploadWorkspace} disabled={!workspaceFile || loading}>
-            {loading ? "Uploading..." : "Upload"}
-          </button>
-        </div>
-        <div> {error && <p>{error}</p>}</div>
-      </>
+      </div>
     );
 }
 
