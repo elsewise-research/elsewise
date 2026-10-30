@@ -1299,7 +1299,6 @@ function Editor() {
           <div className={styles.canvas}>
             <ReactFlow nodes={displayNodes} edges={[]} nodeTypes={nodeTypes} onNodesChange={handleNodesChange} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} />
           </div>
-          <pre>{JSON.stringify({ workspace, batches, selectedBatchId: effectiveSelectedBatchId, batchData }, null, 2)}</pre>
         </div>
         {isAddDimensionOpen && (
           <AddDimensionDialog
