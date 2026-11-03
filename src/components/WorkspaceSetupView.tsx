@@ -118,55 +118,50 @@ function WorkspaceSetupView({}) {
 
     return (
       <div className="workspace-setup">
+        <div className="workspace-setup-wordmark-block">
+          <h1 className="workspace-setup-wordmark">ELSEWISE</h1>
+          <p className="workspace-setup-tagline">Trajectory Visualizer for LLM Agents</p>
+        </div>
         <div className="dialog workspace-setup-dialog">
-          <h1 className="workspace-setup-headline">
-            <a href="https://elsewise-agent-builder.vercel.app/" target="_blank" rel="noopener noreferrer">Start with building your agent {">>"}</a>
-          </h1>
-          <p className="workspace-setup-subtitle">Or set up a workspace directly:</p>
-          <table className="workspace-setup-options">
-            <tbody>
-              <tr>
-                <td className="workspace-setup-option">
-                  <p>New Workspace from Trajectories</p>
-                </td>
-                <td className="workspace-setup-option">
-                  <p>Restore Existing Workspace</p>
-                </td>
-              </tr>
-              <tr>
-                <td className="workspace-setup-option">
-                  <div className="workspace-setup-upload-row">
-                    <input type="file" accept="application/json" onChange={handleTrajectoriesFileChange} />
-                    <button
-                      type="submit"
-                      className="workspace-setup-upload-button"
-                      onClick={handleUploadTrajectories}
-                      disabled={!trajectoryFile || loading}
-                      title={loading ? "Uploading..." : "Upload"}
-                      aria-label={loading ? "Uploading" : "Upload"}
-                    >
-                      {loading ? <Loader2 size={16} className="workspace-setup-spin" /> : <Upload size={16} />}
-                    </button>
-                  </div>
-                </td>
-                <td className="workspace-setup-option">
-                  <div className="workspace-setup-upload-row">
-                    <input type="file" accept="application/json" onChange={handleWorkspaceFileChange} />
-                    <button
-                      type="submit"
-                      className="workspace-setup-upload-button"
-                      onClick={handleUploadWorkspace}
-                      disabled={!workspaceFile || loading}
-                      title={loading ? "Uploading..." : "Upload"}
-                      aria-label={loading ? "Uploading" : "Upload"}
-                    >
-                      {loading ? <Loader2 size={16} className="workspace-setup-spin" /> : <Upload size={16} />}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="workspace-setup-options">
+            <div className="workspace-setup-option workspace-setup-option-link">
+              <p>
+                <a href="https://elsewise-agent-builder.vercel.app/" target="_blank" rel="noopener noreferrer">Start with building a new agent</a>
+              </p>
+            </div>
+            <div className="workspace-setup-option">
+              <p>New Workspace from Trajectories</p>
+              <div className="workspace-setup-upload-row">
+                <input type="file" accept="application/json" onChange={handleTrajectoriesFileChange} />
+                <button
+                  type="submit"
+                  className="workspace-setup-upload-button"
+                  onClick={handleUploadTrajectories}
+                  disabled={!trajectoryFile || loading}
+                  title={loading ? "Uploading..." : "Upload"}
+                  aria-label={loading ? "Uploading" : "Upload"}
+                >
+                  {loading ? <Loader2 size={16} className="workspace-setup-spin" /> : <Upload size={16} />}
+                </button>
+              </div>
+            </div>
+            <div className="workspace-setup-option">
+              <p>Restore Existing Workspace</p>
+              <div className="workspace-setup-upload-row">
+                <input type="file" accept="application/json" onChange={handleWorkspaceFileChange} />
+                <button
+                  type="submit"
+                  className="workspace-setup-upload-button"
+                  onClick={handleUploadWorkspace}
+                  disabled={!workspaceFile || loading}
+                  title={loading ? "Uploading..." : "Upload"}
+                  aria-label={loading ? "Uploading" : "Upload"}
+                >
+                  {loading ? <Loader2 size={16} className="workspace-setup-spin" /> : <Upload size={16} />}
+                </button>
+              </div>
+            </div>
+          </div>
           {error && <p className="dialog-error">{error}</p>}
         </div>
       </div>

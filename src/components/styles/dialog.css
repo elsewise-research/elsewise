@@ -206,6 +206,17 @@
 }
 
 .workspace-setup {
+    --ws-ground: #f3f5f8;
+    --ws-surface: #ffffff;
+    --ws-title: #555a60;
+    --ws-muted: #6d7278;
+    --ws-line: #d9dde2;
+    --ws-red: #b02a1e;
+    --ws-btn: #e0e0e0;
+    --ws-btn-hover: #d0d0d0;
+    --ws-display: var(--font-barlow-condensed), "Avenir Next Condensed", "Arial Narrow", sans-serif;
+    --ws-body: var(--font-barlow-semi-condensed), "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
+
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -213,64 +224,124 @@
     justify-content: center;
     gap: 24px;
     padding: 40px 20px;
-    background: #f5f5f5;
+    background: var(--ws-ground);
+    font-family: var(--ws-body);
+}
+
+.workspace-setup-wordmark-block {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+    gap: 6px;
+}
+
+.workspace-setup-wordmark {
+    margin: 0;
+    font-family: var(--ws-display);
+    font-weight: 500;
+    font-size: clamp(64px, 11vw, 120px);
+    line-height: .9;
+    letter-spacing: .02em;
+    color: var(--ws-title);
+}
+
+.workspace-setup-tagline {
+    margin: 0;
+    font-family: var(--ws-display);
+    font-weight: 200;
+    font-size: clamp(30px, 5vw, 56px);
+    line-height: 1.05;
+    color: var(--ws-title);
 }
 
 .workspace-setup-dialog {
-    width: 480px;
-}
-
-h1.workspace-setup-headline {
-    margin: 0;
-    font-size: 24px;
-    text-align: center;
-}
-
-.workspace-setup-headline a {
-    color: #333;
-    text-decoration: none;
-}
-
-.workspace-setup-headline a:hover {
-    color: #000;
-    text-decoration: underline;
+    width: min(560px, 100%);
+    background: var(--ws-surface);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    border-radius: 10px;
+    padding: 40px 36px;
+    gap: 22px;
 }
 
 .workspace-setup-subtitle {
     margin: 0;
-    font-size: 13px;
-    color: #888;
+    font-style: italic;
+    font-size: 15px;
+    color: var(--ws-muted);
     text-align: center;
 }
 
 .workspace-setup-options {
     width: 100%;
-    /* Without this, column widths follow content's preferred size — the native file input's
-       wide intrinsic width would push a column (and the table) past the dialog's width,
-       requiring a scrollbar. Fixed layout makes the 50% widths below authoritative instead. */
-    table-layout: fixed;
-    border-collapse: separate;
-    border-spacing: 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .workspace-setup-option {
-    width: 50%;
-    vertical-align: top;
+    min-width: 0;
+    border: 1px solid var(--ws-line);
+    border-radius: 8px;
+    padding: 16px 18px;
+    display: grid;
+    gap: 10px;
+    align-content: start;
 }
 
 .workspace-setup-option p {
+    margin: 0 0 4px;
+    font-family: var(--ws-display);
+    font-weight: 600;
+    font-size: 17px;
+    color: var(--ws-title);
+}
+
+.workspace-setup-option-link {
+    justify-items: start;
+    align-content: center;
+    text-align: left;
+    background-color: var(--ws-title);
+    color: #fff;
+}
+
+.workspace-setup-option-link p {
     margin: 0;
+}
+
+.workspace-setup-option-link a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--ws-display);
+    font-weight: 600;
+    font-size: 17px;
+    color: #ddd;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.workspace-setup-option-link a:hover {
+    color: #fff;
 }
 
 .workspace-setup-upload-row {
     display: flex;
     align-items: center;
     gap: 8px;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .workspace-setup-upload-row input[type="file"] {
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
+    overflow: hidden;
+    font-family: var(--ws-body);
+    font-size: 13px;
+    color: var(--ws-muted);
+    border: 1px solid var(--ws-line);
+    border-radius: 8px;
+    padding: 5px 7px;
 }
 
 .workspace-setup-upload-button {
@@ -278,20 +349,28 @@ h1.workspace-setup-headline {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 32px;
-    height: 32px;
+    width: 34px;
+    height: 34px;
     padding: 0;
-    border-radius: 6px;
-    border: 1px solid #333;
-    background: #333;
-    color: white;
+    border-radius: 9px;
+    border: none;
+    background: var(--ws-btn);
+    color: var(--ws-title);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
     cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+.workspace-setup-upload-button:hover:not(:disabled) {
+    background: var(--ws-btn-hover);
+    transform: translateY(-1px);
 }
 
 .workspace-setup-upload-button:disabled {
-    background: white;
-    color: #999;
-    border-color: #ccc;
+    background: var(--ws-surface);
+    color: #bbb;
+    border: 1px solid var(--ws-line);
+    box-shadow: none;
     cursor: default;
 }
 
@@ -301,4 +380,10 @@ h1.workspace-setup-headline {
 
 @keyframes workspace-setup-spin {
     to { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+    .workspace-setup-dialog {
+        padding: 32px 22px;
+    }
 }
